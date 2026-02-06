@@ -3,6 +3,8 @@ name: Build APK
 on:
   push:
     branches: [ main ]
+    tags:
+      - 'v*'  # Trigger on version tags like v1.0.0
   pull_request:
     branches: [ main ]
   workflow_dispatch:  # Allows manual trigger from GitHub UI
@@ -28,9 +30,19 @@ jobs:
     - name: Build Debug APK
       run: ./gradlew assembleDebug
 
-    - name: Upload APK
+    - name: Upload APK artifact
       uses: actions/upload-artifact@v4
       with:
         name: ncSenderControl
         path: app/build/outputs/apk/debug/ncSenderControl-debug.apk
         retention-days: 30
+
+    # Create GitHub Release when a tag is pushed
+    - name: Create Release
+      if: startsWith(github.ref, 'refs/tags/v')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: app/build/outputs/apk/debug/ncSenderControl-debug.apk
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

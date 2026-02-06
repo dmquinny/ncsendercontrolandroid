@@ -153,6 +153,18 @@ class MainActivity : AppCompatActivity() {
         updateConnectionUI(false)
         loadSavedUrls()
         loadUserSettings()
+        
+        // Check for updates
+        checkForUpdates()
+    }
+    
+    private fun checkForUpdates() {
+        CoroutineScope(Dispatchers.Main).launch {
+            val release = UpdateChecker.checkForUpdate(this@MainActivity)
+            if (release != null) {
+                UpdateChecker.showUpdateDialog(this@MainActivity, release)
+            }
+        }
     }
     
     override fun onResume() {
