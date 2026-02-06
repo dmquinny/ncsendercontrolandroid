@@ -118,6 +118,10 @@ class MainActivity : AppCompatActivity() {
     private var userInteractingWithSlider = false  // Don't update slider while user is dragging
     private var overrideUpdateCooldownUntil = 0L  // Don't sync slider until cooldown expires (like ncSender's timeout)
     private var loadedJobFilename: String? = null
+    
+    // Update checker - only check once per hour
+    private var lastUpdateCheckTime = 0L
+    private val UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000L  // 1 hour
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -153,9 +157,6 @@ class MainActivity : AppCompatActivity() {
         updateConnectionUI(false)
         loadSavedUrls()
         loadUserSettings()
-        
-        // Check for updates
-        checkForUpdates()
     }
     
     private fun checkForUpdates() {
@@ -169,6 +170,14 @@ class MainActivity : AppCompatActivity() {
     
     override fun onResume() {
         super.onResume()
+        
+        // Check for updates (with cooldown to avoid checking too often)
+        val now = System.currentTimeMillis()
+        if (now - lastUpdateCheckTime > UPDATE_CHECK_INTERVAL_MS) {
+            lastUpdateCheckTime = now
+            checkForUpdates()
+        }
+        
         // Check if ConnectionManager has a different connection state than we think
         // This handles the case where VoiceControlActivity reconnected
         if (ConnectionManager.isConnected() && !isConnected) {
