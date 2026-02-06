@@ -29,6 +29,7 @@ object UpdateChecker {
     private const val GITHUB_API_URL = "https://api.github.com/repos/dmquinny/ncsendercontrolandroid/releases/latest"
     private const val PREFS_NAME = "update_prefs"
     private const val KEY_SKIPPED_VERSION = "skipped_version"
+    private const val TAG = "UpdateChecker"
     
     private val client = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
@@ -40,29 +41,43 @@ object UpdateChecker {
     suspend fun checkForUpdate(context: Context): GitHubRelease? {
         return withContext(Dispatchers.IO) {
             try {
+                android.util.Log.d(TAG, "Checking for updates...")
                 val request = Request.Builder()
                     .url(GITHUB_API_URL)
                     .header("Accept", "application/vnd.github.v3+json")
                     .build()
                 
                 val response = client.newCall(request).execute()
+                android.util.Log.d(TAG, "Response code: ${response.code}")
                 if (response.isSuccessful) {
                     response.body?.string()?.let { json ->
                         val release = gson.fromJson(json, GitHubRelease::class.java)
                         val latestVersion = parseVersion(release.tagName)
                         val currentVersion = parseVersion(getCurrentVersion(context))
                         
+                        android.util.Log.d(TAG, "Current version: ${getCurrentVersion(context)} ($currentVersion)")
+                        android.util.Log.d(TAG, "Latest version: ${release.tagName} ($latestVersion)")
+                        
                         if (latestVersion > currentVersion) {
                             // Check if user skipped this version
                             val skippedVersion = getSkippedVersion(context)
+                            android.util.Log.d(TAG, "Skipped version: $skippedVersion")
                             if (release.tagName != skippedVersion) {
+                                android.util.Log.d(TAG, "Update available!")
                                 return@withContext release
+                            } else {
+                                android.util.Log.d(TAG, "User skipped this version")
                             }
+                        } else {
+                            android.util.Log.d(TAG, "Already on latest version")
                         }
                     }
+                } else {
+                    android.util.Log.e(TAG, "Response failed: ${response.code} ${response.message}")
                 }
                 null
             } catch (e: Exception) {
+                android.util.Log.e(TAG, "Error checking for updates", e)
                 e.printStackTrace()
                 null
             }
