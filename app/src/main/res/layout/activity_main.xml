@@ -1,0 +1,1019 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#1a1a2e"
+    android:orientation="vertical">
+
+    <!-- Tab Layout with Menu Button -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:background="#2c3e50"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:id="@+id/overflowMenuBtn"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:text="\u22EE"
+            android:textColor="#7f8c8d"
+            android:textSize="24sp"
+            android:gravity="center"
+            android:clickable="true"
+            android:focusable="true"
+            android:contentDescription="More options" />
+
+        <com.google.android.material.tabs.TabLayout
+            android:id="@+id/tabLayout"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:background="#2c3e50"
+            app:tabTextColor="#7f8c8d"
+            app:tabSelectedTextColor="#ffffff"
+            app:tabIndicatorColor="#3498db">
+
+            <com.google.android.material.tabs.TabItem
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Controls" />
+
+            <com.google.android.material.tabs.TabItem
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Connection" />
+        </com.google.android.material.tabs.TabLayout>
+    </LinearLayout>
+
+    <!-- Controls Tab Content (wrapped in FrameLayout for disabled overlay) -->
+    <FrameLayout
+        android:id="@+id/controlsTab"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="visible">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:padding="8dp">
+
+        <!-- Workspace Selector with Start/Halt -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:padding="4dp">
+
+            <FrameLayout
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:background="@drawable/start_button_background"
+                android:clipChildren="true">
+
+                <View
+                    android:id="@+id/startBtnFill"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:background="#302e7d32" />
+
+                <TextView
+                    android:id="@+id/startBtn"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:text="CYCLE\nHold"
+                    android:textColor="#2e7d32"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:gravity="center"
+                    android:clickable="true"
+                    android:focusable="true" />
+            </FrameLayout>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="Workspace:"
+                android:textColor="#ffffff"
+                android:textSize="14sp" />
+
+            <Spinner
+                android:id="@+id/workspaceSpinner"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/spinner_background"
+                android:foreground="@drawable/spinner_foreground"
+                android:foregroundGravity="center_vertical|right"
+                android:entries="@array/workspaces"
+                android:padding="8dp"
+                android:popupBackground="#2c3e50" />
+
+            <Button
+                android:id="@+id/haltBtn"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/halt_button_background"
+                app:backgroundTint="@null"
+                android:text="HALT"
+                android:textColor="#f9a825"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- Axis Buttons with Position Display -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:padding="4dp">
+
+            <!-- X Axis -->
+            <LinearLayout
+                android:id="@+id/xBtn"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginEnd="4dp"
+                android:background="@drawable/axis_button_background"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:padding="8dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="X"
+                    android:textColor="#e74c3c"
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/xWPos"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0.000"
+                    android:textColor="#ffffff"
+                    android:textSize="16sp"
+                    android:fontFamily="monospace"
+                    android:textIsSelectable="false" />
+
+                <TextView
+                    android:id="@+id/xMPos"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0.000"
+                    android:textColor="#e8e8e8"
+                    android:textSize="11sp"
+                    android:fontFamily="monospace"
+                    android:textIsSelectable="false" />
+            </LinearLayout>
+
+            <!-- Y Axis -->
+            <LinearLayout
+                android:id="@+id/yBtn"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginHorizontal="4dp"
+                android:background="@drawable/axis_button_background"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:padding="8dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Y"
+                    android:textColor="#2ecc71"
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/yWPos"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0.000"
+                    android:textColor="#ffffff"
+                    android:textSize="16sp"
+                    android:fontFamily="monospace"
+                    android:textIsSelectable="false" />
+
+                <TextView
+                    android:id="@+id/yMPos"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0.000"
+                    android:textColor="#e8e8e8"
+                    android:textSize="11sp"
+                    android:fontFamily="monospace"
+                    android:textIsSelectable="false" />
+            </LinearLayout>
+
+            <!-- Z Axis -->
+            <LinearLayout
+                android:id="@+id/zBtn"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="4dp"
+                android:background="@drawable/axis_button_background"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:padding="8dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Z"
+                    android:textColor="#3498db"
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/zWPos"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0.000"
+                    android:textColor="#ffffff"
+                    android:textSize="16sp"
+                    android:fontFamily="monospace"
+                    android:textIsSelectable="false" />
+
+                <TextView
+                    android:id="@+id/zMPos"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0.000"
+                    android:textColor="#e8e8e8"
+                    android:textSize="11sp"
+                    android:fontFamily="monospace"
+                    android:textIsSelectable="false" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:text="Hold the Axis to Zero"
+            android:textColor="#7f8c8d"
+            android:textSize="10sp" />
+
+        <!-- Direction Label -->
+        <TextView
+            android:id="@+id/directionLabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:padding="4dp"
+            android:text="Jog X Axis"
+            android:textColor="#ffffff"
+            android:textSize="16sp" />
+
+        <!-- Mode Toggle + Stop -->
+        <LinearLayout
+            android:id="@+id/modeToggleRow"
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="4dp">
+
+            <TextView
+                android:id="@+id/modeToggleBtn"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:layout_marginHorizontal="3dp"
+                android:paddingHorizontal="6dp"
+                android:background="@drawable/scan_button_background"
+                android:text="\u25A6 Pad"
+                android:textColor="#3498db"
+                android:textSize="12sp"
+                android:gravity="center"
+                android:clickable="true"
+                android:focusable="true" />
+
+            <FrameLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:layout_marginHorizontal="3dp"
+                android:background="@drawable/home_button_background"
+                android:clipChildren="true">
+
+                <View
+                    android:id="@+id/homeBtnFill"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:background="#3027ae60" />
+
+                <TextView
+                    android:id="@+id/homeBtn"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:paddingHorizontal="6dp"
+                    android:text="\u2302 Home\nHold"
+                    android:textColor="#2ecc71"
+                    android:textSize="12sp"
+                    android:gravity="center"
+                    android:clickable="true"
+                    android:focusable="true" />
+            </FrameLayout>
+
+            <TextView
+                android:id="@+id/dialStopBtn"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:layout_marginHorizontal="3dp"
+                android:paddingHorizontal="6dp"
+                android:background="@drawable/stop_button_background"
+                android:text="\u26D4 STOP"
+                android:textColor="#e74c3c"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:gravity="center"
+                android:clickable="true"
+                android:focusable="true" />
+        </LinearLayout>
+
+        <!-- Jog area wrapper (dial + pad + status overlay) -->
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1">
+
+            <!-- Jog Dial Container -->
+            <FrameLayout
+                android:id="@+id/dialContainer"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center">
+
+                <com.cncpendant.app.JogDialView
+                    android:id="@+id/jogDial"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:layout_gravity="center" />
+
+                <!-- Grey overlay when no axis selected -->
+                <View
+                    android:id="@+id/dialGreyOverlay"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="#AA000000"
+                    android:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/selectAxisOverlay"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:text="Select an Axis"
+                    android:textSize="18sp"
+                    android:textColor="#ffffff"
+                    android:textStyle="bold"
+                    android:padding="16dp"
+                    android:visibility="visible" />
+            </FrameLayout>
+
+            <!-- Touch Pad Container -->
+            <FrameLayout
+                android:id="@+id/padContainer"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:visibility="gone"
+                android:gravity="center"
+                android:padding="8dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:orientation="horizontal">
+
+                    <!-- XY Pad -->
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="3"
+                        android:orientation="vertical">
+
+                        <!-- Row 1 -->
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:id="@+id/xyUpLeftBtn"
+                                android:layout_width="0dp"
+                                android:layout_height="80dp"
+                                android:layout_weight="1"
+                                android:layout_margin="2dp"
+                                android:background="@drawable/pad_button_background"
+                                android:text="↖"
+                                android:textColor="#ffffff"
+                                android:textSize="20sp"
+                                android:gravity="center"
+                                android:clickable="true"
+                                android:focusable="true" />
+
+                            <TextView
+                                android:id="@+id/yPlusBtn"
+                                android:layout_width="0dp"
+                                android:layout_height="80dp"
+                                android:layout_weight="1"
+                                android:layout_margin="2dp"
+                                android:background="@drawable/pad_button_background"
+                                android:text="Y+"
+                                android:textColor="#2ecc71"
+                                android:textSize="16sp"
+                                android:gravity="center"
+                                android:clickable="true"
+                                android:focusable="true" />
+
+                            <TextView
+                                android:id="@+id/xyUpRightBtn"
+                                android:layout_width="0dp"
+                                android:layout_height="80dp"
+                                android:layout_weight="1"
+                                android:layout_margin="2dp"
+                                android:background="@drawable/pad_button_background"
+                                android:text="↗"
+                                android:textColor="#ffffff"
+                                android:textSize="20sp"
+                                android:gravity="center"
+                                android:clickable="true"
+                                android:focusable="true" />
+                        </LinearLayout>
+
+                        <!-- Row 2 -->
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:id="@+id/xMinusBtn"
+                                android:layout_width="0dp"
+                                android:layout_height="80dp"
+                                android:layout_weight="1"
+                                android:layout_margin="2dp"
+                                android:background="@drawable/pad_button_background"
+                                android:text="X-"
+                                android:textColor="#e74c3c"
+                                android:textSize="16sp"
+                                android:gravity="center"
+                                android:clickable="true"
+                                android:focusable="true" />
+
+                            <TextView
+                                android:id="@+id/stopBtn"
+                                android:layout_width="0dp"
+                                android:layout_height="80dp"
+                                android:layout_weight="1"
+                                android:layout_margin="2dp"
+                                android:background="@drawable/stop_button_background"
+                                android:text="\u26D4"
+                                android:textColor="#e74c3c"
+                                android:textSize="24sp"
+                                android:gravity="center"
+                                android:clickable="true"
+                                android:focusable="true" />
+
+                            <TextView
+                                android:id="@+id/xPlusBtn"
+                                android:layout_width="0dp"
+                                android:layout_height="80dp"
+                                android:layout_weight="1"
+                                android:layout_margin="2dp"
+                                android:background="@drawable/pad_button_background"
+                                android:text="X+"
+                                android:textColor="#e74c3c"
+                                android:textSize="16sp"
+                                android:gravity="center"
+                                android:clickable="true"
+                                android:focusable="true" />
+                        </LinearLayout>
+
+                        <!-- Row 3 -->
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:id="@+id/xyDownLeftBtn"
+                                android:layout_width="0dp"
+                                android:layout_height="80dp"
+                                android:layout_weight="1"
+                                android:layout_margin="2dp"
+                                android:background="@drawable/pad_button_background"
+                                android:text="↙"
+                                android:textColor="#ffffff"
+                                android:textSize="20sp"
+                                android:gravity="center"
+                                android:clickable="true"
+                                android:focusable="true" />
+
+                            <TextView
+                                android:id="@+id/yMinusBtn"
+                                android:layout_width="0dp"
+                                android:layout_height="80dp"
+                                android:layout_weight="1"
+                                android:layout_margin="2dp"
+                                android:background="@drawable/pad_button_background"
+                                android:text="Y-"
+                                android:textColor="#2ecc71"
+                                android:textSize="16sp"
+                                android:gravity="center"
+                                android:clickable="true"
+                                android:focusable="true" />
+
+                            <TextView
+                                android:id="@+id/xyDownRightBtn"
+                                android:layout_width="0dp"
+                                android:layout_height="80dp"
+                                android:layout_weight="1"
+                                android:layout_margin="2dp"
+                                android:background="@drawable/pad_button_background"
+                                android:text="↘"
+                                android:textColor="#ffffff"
+                                android:textSize="20sp"
+                                android:gravity="center"
+                                android:clickable="true"
+                                android:focusable="true" />
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <!-- Z Axis Column -->
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:layout_marginStart="4dp">
+
+                        <TextView
+                            android:id="@+id/zPlusBtn"
+                            android:layout_width="match_parent"
+                            android:layout_height="80dp"
+                            android:layout_margin="2dp"
+                            android:background="@drawable/pad_button_background"
+                            android:text="Z+"
+                            android:textColor="#3498db"
+                            android:textSize="16sp"
+                            android:gravity="center"
+                            android:clickable="true"
+                            android:focusable="true" />
+
+                        <View
+                            android:layout_width="match_parent"
+                            android:layout_height="80dp"
+                            android:layout_margin="2dp" />
+
+                        <TextView
+                            android:id="@+id/zMinusBtn"
+                            android:layout_width="match_parent"
+                            android:layout_height="80dp"
+                            android:layout_margin="2dp"
+                            android:background="@drawable/pad_button_background"
+                            android:text="Z-"
+                            android:textColor="#3498db"
+                            android:textSize="16sp"
+                            android:gravity="center"
+                            android:clickable="true"
+                            android:focusable="true" />
+                    </LinearLayout>
+                </LinearLayout>
+            </FrameLayout>
+
+            <!-- Override Controls Container (shown when job is running) -->
+            <LinearLayout
+                android:id="@+id/overrideContainer"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:background="#1a1a2e"
+                android:padding="16dp"
+                android:visibility="gone">
+
+                <!-- Feed Override -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:background="@drawable/axis_button_background"
+                    android:padding="12dp"
+                    android:layout_marginBottom="12dp">
+
+                    <TextView
+                        android:id="@+id/feedResetBtn"
+                        android:layout_width="wrap_content"
+                        android:layout_height="36dp"
+                        android:paddingHorizontal="12dp"
+                        android:background="@drawable/override_button_background"
+                        android:text="Feed ↻"
+                        android:textColor="#ffffff"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:gravity="center"
+                        android:clickable="true"
+                        android:focusable="true" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:layout_marginHorizontal="12dp">
+
+                        <TextView
+                            android:id="@+id/feedOverridePercent"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="100%"
+                            android:textColor="#1abc9c"
+                            android:textSize="12sp"
+                            android:gravity="center" />
+
+                        <SeekBar
+                            android:id="@+id/feedOverrideSlider"
+                            android:layout_width="match_parent"
+                            android:layout_height="32dp"
+                            android:min="0"
+                            android:max="200"
+                            android:progress="100"
+                            android:progressDrawable="@drawable/override_slider_track"
+                            android:thumb="@drawable/override_slider_thumb"
+                            android:splitTrack="false" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/feedRateDisplay"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="0 mm/min"
+                        android:textColor="#ffffff"
+                        android:textSize="14sp"
+                        android:minWidth="90dp"
+                        android:gravity="end" />
+                </LinearLayout>
+
+                <!-- Spindle Override -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:background="@drawable/axis_button_background"
+                    android:padding="12dp">
+
+                    <TextView
+                        android:id="@+id/spindleResetBtn"
+                        android:layout_width="wrap_content"
+                        android:layout_height="36dp"
+                        android:paddingHorizontal="12dp"
+                        android:background="@drawable/override_button_background"
+                        android:text="Spindle ↻"
+                        android:textColor="#ffffff"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:gravity="center"
+                        android:clickable="true"
+                        android:focusable="true" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:layout_marginHorizontal="12dp">
+
+                        <TextView
+                            android:id="@+id/spindleOverridePercent"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="100%"
+                            android:textColor="#1abc9c"
+                            android:textSize="12sp"
+                            android:gravity="center" />
+
+                        <SeekBar
+                            android:id="@+id/spindleOverrideSlider"
+                            android:layout_width="match_parent"
+                            android:layout_height="32dp"
+                            android:min="0"
+                            android:max="200"
+                            android:progress="100"
+                            android:progressDrawable="@drawable/override_slider_track"
+                            android:thumb="@drawable/override_slider_thumb"
+                            android:splitTrack="false" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/spindleSpeedDisplay"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="0 / 0 rpm"
+                        android:textColor="#ffffff"
+                        android:textSize="14sp"
+                        android:minWidth="90dp"
+                        android:gravity="end" />
+                </LinearLayout>
+
+                <!-- Job Running Status -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="24dp"
+                    android:text="Job Running"
+                    android:textColor="#2ecc71"
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="Adjust feed and spindle overrides above"
+                    android:textColor="#7f8c8d"
+                    android:textSize="12sp" />
+
+                <!-- Stop Button -->
+                <TextView
+                    android:id="@+id/overrideStopBtn"
+                    android:layout_width="match_parent"
+                    android:layout_height="56dp"
+                    android:layout_marginTop="24dp"
+                    android:layout_marginHorizontal="32dp"
+                    android:background="@drawable/stop_button_background"
+                    android:text="⛔ STOP"
+                    android:textColor="#e74c3c"
+                    android:textSize="20sp"
+                    android:textStyle="bold"
+                    android:gravity="center"
+                    android:clickable="true"
+                    android:focusable="true" />
+
+            </LinearLayout>
+
+            <!-- Machine Status Overlay (covers entire jog area when controls locked) -->
+            <LinearLayout
+                android:id="@+id/machineStatusBanner"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:background="#DD1a1a2e"
+                android:clickable="true"
+                android:focusable="true"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Machine Status:"
+                    android:textColor="#7f8c8d"
+                    android:textSize="14sp"
+                    android:layout_marginBottom="4dp" />
+
+                <TextView
+                    android:id="@+id/machineStatusText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="#f39c12"
+                    android:textSize="20sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/unlockBtn"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:paddingHorizontal="28dp"
+                    android:paddingVertical="10dp"
+                    android:background="@drawable/stop_button_background"
+                    android:text="UNLOCK"
+                    android:textColor="#e74c3c"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/alarmMessageText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:layout_marginHorizontal="24dp"
+                    android:gravity="center"
+                    android:textAlignment="center"
+                    android:textColor="#f39c12"
+                    android:textSize="14sp"
+                    android:lineSpacingExtra="4dp"
+                    android:visibility="gone" />
+            </LinearLayout>
+        </FrameLayout>
+
+        <!-- Step Size & Feed Rate Selectors -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:padding="4dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Step:"
+                android:textColor="#7f8c8d"
+                android:textSize="14sp" />
+
+            <Spinner
+                android:id="@+id/stepSpinner"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_weight="0.8"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/spinner_background"
+                android:foreground="@drawable/spinner_foreground"
+                android:foregroundGravity="center_vertical|right"
+                android:entries="@array/step_sizes"
+                android:padding="8dp"
+                android:popupBackground="#2c3e50"
+                android:dropDownVerticalOffset="-200dp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:text="Feed:"
+                android:textColor="#7f8c8d"
+                android:textSize="14sp" />
+
+            <Spinner
+                android:id="@+id/feedRateSpinner"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_weight="1.2"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/spinner_background"
+                android:foreground="@drawable/spinner_foreground"
+                android:foregroundGravity="center_vertical|right"
+                android:entries="@array/feed_rates"
+                android:padding="8dp"
+                android:popupBackground="#2c3e50"
+                android:dropDownVerticalOffset="-300dp" />
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- Disconnected overlay - blocks touches and greys out controls -->
+    <View
+        android:id="@+id/disconnectedOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#CC1a1a2e"
+        android:clickable="true"
+        android:focusable="true"
+        android:visibility="visible" />
+
+    </FrameLayout>
+
+    <!-- Connection Tab Content -->
+    <LinearLayout
+        android:id="@+id/connectionTab"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:gravity="center_horizontal"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="WebSocket Connection"
+            android:textColor="#ffffff"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:layout_marginTop="32dp"
+            android:layout_marginBottom="24dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Server Address"
+            android:textColor="#7f8c8d"
+            android:textSize="14sp"
+            android:layout_marginBottom="8dp" />
+
+        <EditText
+            android:id="@+id/wsUrlInput"
+            android:layout_width="match_parent"
+            android:layout_height="72dp"
+            android:background="@drawable/input_background"
+            android:hint="192.168.1.x:8090"
+            android:inputType="textUri"
+            android:padding="16dp"
+            android:textColor="#ffffff"
+            android:textColorHint="#7f8c8d"
+            android:textSize="18sp" />
+
+        <!-- Saved addresses dropdown -->
+        <LinearLayout
+            android:id="@+id/savedUrlsContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginTop="4dp"
+            android:visibility="gone" />
+
+        <!-- Network scan row -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="8dp"
+            android:gravity="center_vertical">
+
+            <Button
+                android:id="@+id/scanBtn"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:background="@drawable/scan_button_background"
+                app:backgroundTint="@null"
+                android:text="Scan Network"
+                android:textColor="#3498db"
+                android:textSize="14sp" />
+
+            <ProgressBar
+                android:id="@+id/scanProgress"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:layout_marginStart="8dp"
+                android:visibility="gone"
+                android:indeterminateTint="#3498db" />
+        </LinearLayout>
+
+        <!-- Scan results -->
+        <LinearLayout
+            android:id="@+id/scanResultsContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginTop="4dp"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/connectBtn"
+            android:layout_width="match_parent"
+            android:layout_height="72dp"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/connect_button_background"
+            app:backgroundTint="@null"
+            android:text="Connect"
+            android:textColor="#ffffff"
+            android:textSize="18sp" />
+
+        <Button
+            android:id="@+id/openWebBtn"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/scan_button_background"
+            app:backgroundTint="@null"
+            android:text="Open ncSender in Browser"
+            android:textColor="#3498db"
+            android:textSize="14sp"
+            android:visibility="gone" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Enter the IP address and port of your\nncSender WebSocket server"
+            android:textColor="#7f8c8d"
+            android:textSize="12sp"
+            android:gravity="center"
+            android:layout_marginTop="24dp" />
+
+    </LinearLayout>
+
+</LinearLayout>

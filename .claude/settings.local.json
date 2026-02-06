@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir:*)",
+      "Bash(.gradlew.bat:*)",
+      "Bash(cmd /c \"gradlew.bat assembleDebug\")",
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(curl:*)",
+      "Bash(cmd /c \"gradlew.bat assembleDebug 2>&1\")"
+    ]
+  }
+}

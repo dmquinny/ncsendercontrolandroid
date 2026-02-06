@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="workspaces">
+        <item>G54</item>
+        <item>G55</item>
+        <item>G56</item>
+        <item>G57</item>
+        <item>G58</item>
+        <item>G59</item>
+    </string-array>
+
+    <!-- Metric step sizes (mm) -->
+    <string-array name="step_sizes">
+        <item>0.05 mm</item>
+        <item>0.1 mm</item>
+        <item>1 mm</item>
+        <item>10 mm</item>
+        <item>100 mm</item>
+    </string-array>
+
+    <!-- Imperial step sizes (in) -->
+    <string-array name="step_sizes_imperial">
+        <item>0.001 in</item>
+        <item>0.005 in</item>
+        <item>0.01 in</item>
+        <item>0.1 in</item>
+        <item>1 in</item>
+    </string-array>
+
+    <!-- Metric feed rates (mm/min) -->
+    <string-array name="feed_rates">
+        <item>100 mm/min</item>
+        <item>500 mm/min</item>
+        <item>1000 mm/min</item>
+        <item>3000 mm/min</item>
+        <item>6000 mm/min</item>
+        <item>8000 mm/min</item>
+    </string-array>
+
+    <!-- Imperial feed rates (in/min) -->
+    <string-array name="feed_rates_imperial">
+        <item>4 in/min</item>
+        <item>20 in/min</item>
+        <item>40 in/min</item>
+        <item>120 in/min</item>
+        <item>240 in/min</item>
+        <item>315 in/min</item>
+    </string-array>
+</resources>

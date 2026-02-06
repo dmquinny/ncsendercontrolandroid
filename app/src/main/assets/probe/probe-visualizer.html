@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: transparent; overflow: hidden; touch-action: none; }
+#container { width: 100vw; height: 100vh; position: relative; }
+canvas { display: block; width: 100% !important; height: 100% !important; }
+</style>
+</head>
+<body>
+<div id="container"></div>
+<script>
+// Error handler - if module script fails to load (e.g. no network for CDN),
+// show an error message and notify Android
+window.addEventListener('error', function(e) {
+  console.error('Probe visualizer error:', e.message);
+  var container = document.getElementById('container');
+  container.innerHTML = '<div style="color:#aaa;text-align:center;padding:40px;font-family:sans-serif;">' +
+    '<p>Failed to load 3D viewer</p><p style="font-size:12px;color:#666;">Check network connection</p></div>';
+  if (window.Android) window.Android.onVisualizerReady();
+});
+</script>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://probe.local/lib/three.module.js",
+    "three/addons/": "https://probe.local/lib/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/OrbitControls.js';
+import { MTLLoader } from 'three/addons/MTLLoader.js';
+
+// ===== Constants =====
+const ACCENT_COLOR = 0x1abc9c;
+const DEFAULT_CORNER_COLOR = 0x555555;
+const DEFAULT_SIDE_COLOR = 0x555555;
+const DEFAULT_PLATE_COLOR = 0xdeb887;
+
+const AXIS_PLATE_MAP = {
+  'Z': 'plate-solid.txt',
+  'XYZ': 'plate-xyz.txt',
+  'XY': 'plate-xyz.txt',
+  'X': 'plate-xy.txt',
+  'Y': 'plate-xy.txt',
+  'Center - Inner': 'plate-hole.txt',
+  'Center - Outer': 'plate-solid.txt'
+};
+
+const CORNER_GROUPS = ['TopRight', 'TopLeft', 'BottomRight', 'BottomLeft'];
+const SIDE_GROUPS = ['BottomLeft', 'TopLeft'];
+
+const STANDARD_BLOCK_X_OFFSET = -3.8;
+const STANDARD_BLOCK_Y_OFFSET = -3.8;
+const STANDARD_BLOCK_Z_POSITION = -0.95;
+const STANDARD_BLOCK_SCALE_MULTIPLIER = 0.6;
+const XY_AXIS_RADIAL_OFFSET = 0.018;
+const XY_AXIS_Z_OFFSET = -0.02;
+
+const AUTOZERO_TOUCH_X_OFFSET = -3.3;
+const AUTOZERO_TOUCH_Y_OFFSET = -3.3;
+const AUTOZERO_TOUCH_Z_POSITION = -0.95;
+
+const cornerRotations = {
+  BottomLeft: 0,
+  TopLeft: -Math.PI / 2,
+  TopRight: -Math.PI,
+  BottomRight: -(3 * Math.PI) / 2
+};
+
+// ===== Mesh Utilities =====
+function findMeshesByGroup(object, groupName) {
+  const meshes = [];
+  object.traverse(child => {
+    if (child.isMesh) {
+      const meshGroup = (child.userData.group || '').toLowerCase();
+      if (meshGroup.includes(groupName.toLowerCase())) {
+        meshes.push(child);
+      }
+    }
+  });
+  return meshes;
+}
+
+function setGroupColor(object, groupName, color) {
+  findMeshesByGroup(object, groupName).forEach(mesh => {
+    if (mesh.material) {
+      mesh.material = new THREE.MeshPhongMaterial({ color, side: THREE.DoubleSide });
+    }
+  });
+}
+
+function applyToGroup(object, groupName, action) {
+  findMeshesByGroup(object, groupName).forEach(action);
+}
+
+// ===== Custom OBJ Loader =====
+class CustomOBJLoader {
+  constructor() {
+    this.materials = null;
+    this.basePath = '';
+  }
+  setMaterials(materials) { this.materials = materials; return this; }
+  setPath(path) { this.basePath = path; return this; }
+
+  async load(url) {
+    const fullUrl = this.basePath + url;
+    const response = await fetch(fullUrl);
+    const objText = await response.text();
+    return this.parse(objText);
+  }
+
+  parse(objText) {
+    const lines = objText.split('\n');
+    const globalVertices = [new THREE.Vector3()];
+    const globalNormals = [new THREE.Vector3()];
+    const globalUVs = [new THREE.Vector2()];
+    const groups = [];
+    let currentGroup = null;
+    let currentMaterial;
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const parts = trimmed.split(/\s+/);
+      const command = parts[0];
+
+      switch (command) {
+        case 'v':
+          globalVertices.push(new THREE.Vector3(parseFloat(parts[1]), parseFloat(parts[2]), parseFloat(parts[3])));
+          break;
+        case 'vn':
+          globalNormals.push(new THREE.Vector3(parseFloat(parts[1]), parseFloat(parts[2]), parseFloat(parts[3])));
+          break;
+        case 'vt':
+          globalUVs.push(new THREE.Vector2(parseFloat(parts[1]), parseFloat(parts[2])));
+          break;
+        case 'g':
+          currentGroup = { name: parts.slice(1).join(' ') || 'default', faces: [] };
+          groups.push(currentGroup);
+          break;
+        case 'usemtl':
+          currentMaterial = parts[1];
+          break;
+        case 'f':
+          if (!currentGroup) {
+            currentGroup = { name: 'default', faces: [] };
+            groups.push(currentGroup);
+          }
+          const vertexIndices = [], normalIndices = [], uvIndices = [];
+          for (let i = 1; i < parts.length; i++) {
+            const indices = parts[i].split('/');
+            vertexIndices.push(parseInt(indices[0]));
+            uvIndices.push(indices[1] ? parseInt(indices[1]) : 0);
+            normalIndices.push(indices[2] ? parseInt(indices[2]) : 0);
+          }
+          currentGroup.faces.push({ vertexIndices, normalIndices, uvIndices, materialName: currentMaterial });
+          break;
+      }
+    }
+
+    const rootGroup = new THREE.Group();
+    for (const group of groups) {
+      if (group.faces.length === 0) continue;
+      const positions = [], normals = [], uvs = [];
+      for (const face of group.faces) {
+        for (let i = 1; i < face.vertexIndices.length - 1; i++) {
+          for (const idx of [0, i, i + 1]) {
+            const v = globalVertices[face.vertexIndices[idx]];
+            positions.push(v.x, v.y, v.z);
+            const nIdx = face.normalIndices[idx];
+            if (nIdx > 0 && globalNormals[nIdx]) {
+              const n = globalNormals[nIdx];
+              normals.push(n.x, n.y, n.z);
+            } else normals.push(0, 0, 1);
+            const uvIdx = face.uvIndices[idx];
+            if (uvIdx > 0 && globalUVs[uvIdx]) {
+              const uv = globalUVs[uvIdx];
+              uvs.push(uv.x, uv.y);
+            } else uvs.push(0, 0);
+          }
+        }
+      }
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+      geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+      let material = new THREE.MeshPhongMaterial({ color: 0xcccccc, side: THREE.DoubleSide });
+      if (this.materials && group.faces[0].materialName) {
+        const matName = group.faces[0].materialName;
+        if (this.materials.materials && this.materials.materials[matName]) {
+          material = this.materials.materials[matName];
+          material.side = THREE.DoubleSide;
+        }
+      }
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.name = group.name;
+      mesh.userData.group = group.name;
+      rootGroup.add(mesh);
+    }
+    return rootGroup;
+  }
+}
+
+async function loadOBJWithGroups(objUrl, mtlUrl, basePath) {
+  const mtlLoader = new MTLLoader();
+  mtlLoader.setPath(basePath);
+  return new Promise((resolve, reject) => {
+    mtlLoader.load(mtlUrl, materials => {
+      materials.preload();
+      const objLoader = new CustomOBJLoader();
+      objLoader.setPath(basePath);
+      objLoader.setMaterials(materials);
+      objLoader.load(objUrl).then(resolve).catch(reject);
+    }, undefined, reject);
+  });
+}
+
+// ===== Geometry Utilities =====
+function getPlateScale(plate) {
+  const bbox = new THREE.Box3().setFromObject(plate);
+  const size = bbox.getSize(new THREE.Vector3());
+  const maxDim = Math.max(size.x, size.y, size.z);
+  return maxDim === 0 ? 1 : 10 / maxDim;
+}
+
+function getCornerPosition(plate, corner, inset) {
+  const bbox = new THREE.Box3().setFromObject(plate);
+  const mn = bbox.min, mx = bbox.max;
+  switch (corner) {
+    case 'BottomRight': return { x: mx.x - inset, y: mn.y + inset };
+    case 'BottomLeft': return { x: mn.x + inset, y: mn.y + inset };
+    case 'TopRight': return { x: mx.x - inset, y: mx.y - inset };
+    case 'TopLeft': default: return { x: mn.x + inset, y: mx.y - inset };
+  }
+}
+
+function getSidePosition(plate, axis, side) {
+  const bbox = new THREE.Box3().setFromObject(plate);
+  const mn = bbox.min, mx = bbox.max;
+  if (axis === 'X') return { x: side === 'Left' ? mn.x - 2 : mx.x + 2, y: 0 };
+  if (axis === 'Y') return { x: 0, y: side === 'Front' ? mn.y - 2 : mx.y + 2 };
+  return { x: 0, y: 0 };
+}
+
+// ===== Scene Setup =====
+const container = document.getElementById('container');
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.001, 1000);
+camera.position.set(0.067, -15.055, 7.437);
+camera.lookAt(0.067, 0.449, 0.072);
+camera.up.set(0, 0, 1);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setClearColor(0x000000, 0);
+renderer.setSize(container.clientWidth, container.clientHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
+container.appendChild(renderer.domElement);
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+dirLight.position.set(5, 10, 7.5);
+scene.add(dirLight);
+const fillLight = new THREE.DirectionalLight(0xffffff, 0.3);
+fillLight.position.set(-5, 0, -5);
+scene.add(fillLight);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = false;
+controls.enableZoom = true;
+controls.zoomSpeed = 0.1;
+controls.enablePan = true;
+controls.enableRotate = true;
+controls.screenSpacePanning = true;
+controls.minAzimuthAngle = 0;
+controls.maxAzimuthAngle = 0;
+controls.target.set(0.067, 0.449, 0.072);
+controls.update();
+
+// Touch handling for mobile
+controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+
+function renderScene() { renderer.render(scene, camera); }
+
+function resetCamera() {
+  camera.position.set(0.067, -15.055, 7.437);
+  camera.lookAt(0.067, 0.449, 0.072);
+  controls.target.set(0.067, 0.449, 0.072);
+  controls.update();
+  renderScene();
+}
+
+// Render on-demand when controls change (no continuous animation loop)
+controls.addEventListener('change', renderScene);
+
+window.addEventListener('resize', () => {
+  camera.aspect = container.clientWidth / container.clientHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(container.clientWidth, container.clientHeight);
+  renderScene();
+});
+
+// ===== Plate Manager =====
+let plateModel = null;
+let currentPlateAxis = null;
+let plateScale = 1;
+let glowInterval = null;
+
+function disposePlate() {
+  if (plateModel) {
+    scene.remove(plateModel);
+    plateModel.traverse(child => {
+      if (child.isMesh) {
+        child.geometry?.dispose();
+        if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+        else child.material?.dispose();
+      }
+    });
+    plateModel = null;
+  }
+  stopGlow();
+  currentPlateAxis = null;
+  plateScale = 1;
+}
+
+async function ensurePlate(axis) {
+  if (currentPlateAxis === axis && plateModel) return plateModel;
+  disposePlate();
+
+  const file = AXIS_PLATE_MAP[axis];
+  const basePath = 'https://probe.local/3d-probe/';
+  const object = await loadOBJWithGroups(file, 'plate.mtl', basePath);
+
+  object.traverse(child => {
+    if (child.isMesh && child.material) {
+      child.material.side = THREE.DoubleSide;
+      child.material.color.setHex(DEFAULT_PLATE_COLOR);
+    }
+  });
+
+  if (file === 'plate-xyz.txt') CORNER_GROUPS.forEach(g => setGroupColor(object, g, DEFAULT_CORNER_COLOR));
+  if (file === 'plate-xy.txt') SIDE_GROUPS.forEach(g => setGroupColor(object, g, DEFAULT_SIDE_COLOR));
+
+  scene.add(object);
+  plateModel = object;
+
+  // Scale plate
+  const center = new THREE.Box3().setFromObject(object).getCenter(new THREE.Vector3());
+  plateScale = getPlateScale(object);
+  object.position.sub(center);
+  object.scale.setScalar(plateScale);
+  object.position.z += 3;
+
+  if (axis === 'X') object.rotation.z = Math.PI / 2;
+
+  currentPlateAxis = axis;
+  renderScene();
+  return plateModel;
+}
+
+function resetPlate(axis) {
+  if (!plateModel) return;
+  plateModel.rotation.set(0, 0, 0);
+  if (axis === 'X') plateModel.rotation.z = Math.PI / 2;
+  CORNER_GROUPS.forEach(g => setGroupColor(plateModel, g, DEFAULT_CORNER_COLOR));
+  SIDE_GROUPS.forEach(g => setGroupColor(plateModel, g, DEFAULT_SIDE_COLOR));
+  renderScene();
+}
+
+function highlightCorner(corner) {
+  if (!plateModel) return;
+  CORNER_GROUPS.forEach(g => setGroupColor(plateModel, g, DEFAULT_CORNER_COLOR));
+  if (corner) setGroupColor(plateModel, corner, ACCENT_COLOR);
+  renderScene();
+}
+
+function highlightSide(axis, side) {
+  if (!plateModel) return;
+  if (!['X', 'Y'].includes(axis)) {
+    SIDE_GROUPS.forEach(g => setGroupColor(plateModel, g, DEFAULT_SIDE_COLOR));
+    renderScene();
+    return;
+  }
+  SIDE_GROUPS.forEach(g => setGroupColor(plateModel, g, DEFAULT_SIDE_COLOR));
+  if (side) {
+    let targetGroup;
+    if (axis === 'X') targetGroup = side === 'Left' ? 'TopLeft' : 'BottomLeft';
+    else targetGroup = side === 'Front' ? 'BottomLeft' : 'TopLeft';
+    setGroupColor(plateModel, targetGroup, ACCENT_COLOR);
+  }
+  renderScene();
+}
+
+function startGlow(groupName) {
+  if (!plateModel) return;
+  stopGlow();
+  let increasing = true, opacity = 0.3;
+  glowInterval = setInterval(() => {
+    if (!plateModel) return;
+    if (increasing) { opacity += 0.05; if (opacity >= 1) { opacity = 1; increasing = false; } }
+    else { opacity -= 0.05; if (opacity <= 0.3) { opacity = 0.3; increasing = true; } }
+    applyToGroup(plateModel, groupName, mesh => {
+      if (!mesh.material) return;
+      mesh.material.transparent = true;
+      mesh.material.opacity = opacity;
+      mesh.material.emissive = new THREE.Color(ACCENT_COLOR);
+      mesh.material.emissiveIntensity = opacity;
+    });
+    renderScene();
+  }, 50);
+}
+
+function stopGlow() {
+  if (glowInterval) { clearInterval(glowInterval); glowInterval = null; }
+}
+
+// ===== Probe Strategy =====
+let probeModel = null;
+let currentProbeType = null;
+
+function disposeProbe() {
+  if (probeModel) {
+    scene.remove(probeModel);
+    probeModel.traverse(child => {
+      if (child.isMesh) {
+        child.geometry?.dispose();
+        if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+        else child.material?.dispose();
+      }
+    });
+    probeModel = null;
+  }
+  currentProbeType = null;
+}
+
+function centerProbe(object, scaleMultiplier = 1) {
+  const bbox = new THREE.Box3().setFromObject(object);
+  const center = bbox.getCenter(new THREE.Vector3());
+  object.position.sub(center);
+  object.scale.multiplyScalar(plateScale * scaleMultiplier);
+}
+
+async function loadThreeDProbe() {
+  const basePath = 'https://probe.local/3d-probe/';
+  const object = await loadOBJWithGroups('3dprobe.txt', '3dprobe.mtl', basePath);
+  object.traverse(child => { if (child.isMesh && child.material) child.material.side = THREE.DoubleSide; });
+  setGroupColor(object, 'Led', 0x5cb85c);
+  setGroupColor(object, 'Body', 0x606060);
+  centerProbe(object);
+  object.position.z += 4;
+  return object;
+}
+
+async function loadStandardBlock() {
+  const basePath = 'https://probe.local/standard-block/';
+  const object = await loadOBJWithGroups('cnc-pointer.txt', 'cnc-pointer.mtl', basePath);
+  object.traverse(child => { if (child.isMesh && child.material) child.material.side = THREE.DoubleSide; });
+  setGroupColor(object, 'LED', 0x5cb85c);
+  setGroupColor(object, 'Body', 0xe8e8e8);
+  setGroupColor(object, 'Nut', 0x606060);
+  centerProbe(object, STANDARD_BLOCK_SCALE_MULTIPLIER);
+  object.position.set(STANDARD_BLOCK_X_OFFSET, STANDARD_BLOCK_Y_OFFSET, STANDARD_BLOCK_Z_POSITION);
+  return object;
+}
+
+async function loadAutoZeroTouch() {
+  const basePath = 'https://probe.local/auto-touch/';
+  const object = await loadOBJWithGroups('cnc-pointer.txt', 'cnc-pointer.mtl', basePath);
+  object.traverse(child => { if (child.isMesh && child.material) child.material.side = THREE.DoubleSide; });
+  setGroupColor(object, 'LED', 0x5cb85c);
+  setGroupColor(object, 'Led', 0x5cb85c);
+  setGroupColor(object, 'AutoPlate', 0xd3d3d3);
+  centerProbe(object);
+  object.position.set(AUTOZERO_TOUCH_X_OFFSET, AUTOZERO_TOUCH_Y_OFFSET, AUTOZERO_TOUCH_Z_POSITION);
+  return object;
+}
+
+// ===== Probe Positioning =====
+function getDefaultPolar(xOffset, yOffset) {
+  const radius = Math.sqrt(xOffset * xOffset + yOffset * yOffset);
+  const initialAngle = Math.atan2(yOffset, xOffset);
+  return { radius, initialAngle };
+}
+
+function moveThreeDProbeToCorner(axis, corner) {
+  if (!probeModel || !plateModel) return;
+  const inset = axis === 'XY' ? -1 : 1.7;
+  const { x, y } = getCornerPosition(plateModel, corner, inset);
+  probeModel.position.set(x, y, axis === 'XY' ? 1 : 3);
+  renderScene();
+}
+
+function moveThreeDProbeToSide(axis, side) {
+  if (!probeModel || !plateModel) return;
+  const { x, y } = getSidePosition(plateModel, axis, side);
+  probeModel.position.set(x, y, 1);
+  renderScene();
+}
+
+function moveBlockToCorner(axis, corner, xOff, yOff, zPos) {
+  if (!probeModel) return;
+  const rotation = cornerRotations[corner];
+  const { radius, initialAngle } = getDefaultPolar(xOff, yOff);
+  const newAngle = initialAngle + rotation;
+  probeModel.position.set(radius * Math.cos(newAngle), radius * Math.sin(newAngle), zPos);
+  probeModel.rotation.z = rotation;
+
+  if (currentProbeType === 'standard-block' && axis === 'XY') {
+    moveProbeSubGroups(-XY_AXIS_RADIAL_OFFSET, -XY_AXIS_RADIAL_OFFSET, XY_AXIS_Z_OFFSET);
+  } else {
+    resetProbeSubGroups();
+  }
+  renderScene();
+}
+
+function moveBlockToSide(axis, side, xOff, yOff, zPos) {
+  if (!probeModel) return;
+  let rotation = null;
+  if (axis === 'X') { if (side === 'Left') rotation = 0; else if (side === 'Right') rotation = Math.PI / 2; }
+  if (axis === 'Y') { if (side === 'Front') rotation = 0; else if (side === 'Back') rotation = -Math.PI / 2; }
+  if (rotation === null) {
+    probeModel.position.set(xOff, yOff, zPos);
+    probeModel.rotation.z = 0;
+    return;
+  }
+  const { radius, initialAngle } = getDefaultPolar(xOff, yOff);
+  const newAngle = initialAngle + rotation;
+  probeModel.position.set(radius * Math.cos(newAngle), radius * Math.sin(newAngle), zPos);
+  probeModel.rotation.z = rotation;
+
+  if (currentProbeType === 'standard-block') {
+    let offX = 0, offY = 0;
+    if (axis === 'X') { offX = side === 'Left' ? -XY_AXIS_RADIAL_OFFSET : 0; offY = side === 'Right' ? -XY_AXIS_RADIAL_OFFSET : 0; }
+    else if (axis === 'Y') { offY = side === 'Front' ? -XY_AXIS_RADIAL_OFFSET : 0; offX = side === 'Back' ? -XY_AXIS_RADIAL_OFFSET : 0; }
+    moveProbeSubGroups(offX, offY, XY_AXIS_Z_OFFSET);
+  }
+  renderScene();
+}
+
+function moveProbeSubGroups(x, y, z) {
+  if (!probeModel) return;
+  probeModel.traverse(child => {
+    if (child.name === 'Nut' || child.name === 'LED' || child.name === 'Body') {
+      child.position.set(x, y, z);
+    }
+  });
+}
+
+function resetProbeSubGroups() {
+  if (!probeModel) return;
+  probeModel.traverse(child => {
+    if (child.name === 'Nut' || child.name === 'LED' || child.name === 'Body') {
+      child.position.set(0, 0, 0);
+    }
+  });
+}
+
+// ===== Click Handling =====
+function groupToCorner(groupName) {
+  const n = groupName.toLowerCase();
+  if (n === 'topright') return 'TopRight';
+  if (n === 'topleft') return 'TopLeft';
+  if (n === 'bottomright') return 'BottomRight';
+  if (n === 'bottomleft') return 'BottomLeft';
+  return null;
+}
+
+function groupToSide(axis, groupName) {
+  const n = groupName.toLowerCase();
+  if (axis === 'X') { if (n === 'topleft') return 'Left'; if (n === 'bottomleft') return 'Right'; }
+  if (axis === 'Y') { if (n.includes('bottom')) return 'Front'; if (n.includes('top')) return 'Back'; }
+  return null;
+}
+
+let currentAxis = 'Z';
+let currentSelCorner = null;
+let currentSelSide = null;
+
+renderer.domElement.addEventListener('click', event => {
+  const interactiveAxes = ['XYZ', 'XY', 'X', 'Y'];
+  if (!interactiveAxes.includes(currentAxis)) return;
+
+  const rect = renderer.domElement.getBoundingClientRect();
+  pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  const intersects = raycaster.intersectObjects(scene.children, true).filter(i => i.object.visible);
+  if (intersects.length === 0) return;
+
+  const groupName = (intersects[0].object.userData.group || '').toString();
+
+  if (['XYZ', 'XY'].includes(currentAxis)) {
+    const corner = groupToCorner(groupName);
+    if (corner) {
+      currentSelCorner = corner;
+      handleCornerSelected(currentAxis, corner);
+      if (window.Android) window.Android.onCornerSelected(corner);
+      return;
+    }
+  }
+
+  if (currentAxis === 'X' || currentAxis === 'Y') {
+    const side = groupToSide(currentAxis, groupName);
+    if (side) {
+      currentSelSide = side;
+      handleSideSelected(currentAxis, side);
+      if (window.Android) window.Android.onSideSelected(side);
+    }
+  }
+});
+
+// Touch support for selection
+let touchStartPos = null;
+renderer.domElement.addEventListener('touchstart', e => {
+  if (e.touches.length === 1) touchStartPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+}, { passive: true });
+
+renderer.domElement.addEventListener('touchend', e => {
+  if (!touchStartPos) return;
+  const touch = e.changedTouches[0];
+  const dx = touch.clientX - touchStartPos.x;
+  const dy = touch.clientY - touchStartPos.y;
+  touchStartPos = null;
+  // Only register as tap if movement < 10px
+  if (Math.sqrt(dx * dx + dy * dy) > 10) return;
+
+  const interactiveAxes = ['XYZ', 'XY', 'X', 'Y'];
+  if (!interactiveAxes.includes(currentAxis)) return;
+
+  const rect = renderer.domElement.getBoundingClientRect();
+  pointer.x = ((touch.clientX - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -((touch.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  const intersects = raycaster.intersectObjects(scene.children, true).filter(i => i.object.visible);
+  if (intersects.length === 0) return;
+
+  const groupName = (intersects[0].object.userData.group || '').toString();
+
+  if (['XYZ', 'XY'].includes(currentAxis)) {
+    const corner = groupToCorner(groupName);
+    if (corner) {
+      currentSelCorner = corner;
+      handleCornerSelected(currentAxis, corner);
+      if (window.Android) window.Android.onCornerSelected(corner);
+      return;
+    }
+  }
+
+  if (currentAxis === 'X' || currentAxis === 'Y') {
+    const side = groupToSide(currentAxis, groupName);
+    if (side) {
+      currentSelSide = side;
+      handleSideSelected(currentAxis, side);
+      if (window.Android) window.Android.onSideSelected(side);
+    }
+  }
+});
+
+// ===== State Update Handlers =====
+function handleCornerSelected(axis, corner) {
+  highlightCorner(corner);
+  if (!probeModel) return;
+
+  if (currentProbeType === '3d-probe') {
+    moveThreeDProbeToCorner(axis, corner);
+  } else if (currentProbeType === 'standard-block') {
+    moveBlockToCorner(axis, corner, STANDARD_BLOCK_X_OFFSET, STANDARD_BLOCK_Y_OFFSET, STANDARD_BLOCK_Z_POSITION);
+  } else if (currentProbeType === 'autozero-touch') {
+    moveBlockToCorner(axis, corner, AUTOZERO_TOUCH_X_OFFSET, AUTOZERO_TOUCH_Y_OFFSET, AUTOZERO_TOUCH_Z_POSITION);
+  }
+  renderScene();
+}
+
+function handleSideSelected(axis, side) {
+  highlightSide(axis, side);
+  if (!probeModel) return;
+
+  if (currentProbeType === '3d-probe') {
+    moveThreeDProbeToSide(axis, side);
+  } else if (currentProbeType === 'standard-block') {
+    moveBlockToSide(axis, side, STANDARD_BLOCK_X_OFFSET, STANDARD_BLOCK_Y_OFFSET, STANDARD_BLOCK_Z_POSITION);
+  } else if (currentProbeType === 'autozero-touch') {
+    moveBlockToSide(axis, side, AUTOZERO_TOUCH_X_OFFSET, AUTOZERO_TOUCH_Y_OFFSET, AUTOZERO_TOUCH_Z_POSITION);
+  }
+  renderScene();
+}
+
+// ===== Public API (called from Android) =====
+window.setProbeState = async function(probeType, probingAxis, selCorner, selSide) {
+  const typeChanged = currentProbeType !== probeType;
+  const axisChanged = currentAxis !== probingAxis;
+  currentAxis = probingAxis;
+  currentSelCorner = selCorner;
+  currentSelSide = selSide;
+
+  // Load plate for new axis
+  await ensurePlate(probingAxis);
+  resetPlate(probingAxis);
+
+  // Enable glow for Center - Inner
+  if (probingAxis === 'Center - Inner') startGlow('InnerEdge');
+  else stopGlow();
+
+  // Load probe model if type changed
+  if (typeChanged || !probeModel) {
+    disposeProbe();
+    currentProbeType = probeType;
+    try {
+      if (probeType === '3d-probe') probeModel = await loadThreeDProbe();
+      else if (probeType === 'standard-block') probeModel = await loadStandardBlock();
+      else if (probeType === 'autozero-touch') probeModel = await loadAutoZeroTouch();
+      if (probeModel) scene.add(probeModel);
+    } catch (e) { console.error('Failed to load probe model:', e); }
+  }
+
+  // Position probe based on selections
+  if (probeModel) {
+    if (['XYZ', 'XY'].includes(probingAxis) && selCorner) {
+      handleCornerSelected(probingAxis, selCorner);
+    } else if ((probingAxis === 'X' || probingAxis === 'Y') && selSide) {
+      handleSideSelected(probingAxis, selSide);
+    } else {
+      // Center/Z position
+      if (currentProbeType === '3d-probe') {
+        probeModel.position.set(0, 0, 3);
+      } else if (currentProbeType === 'standard-block') {
+        probeModel.position.set(STANDARD_BLOCK_X_OFFSET, STANDARD_BLOCK_Y_OFFSET, STANDARD_BLOCK_Z_POSITION);
+        probeModel.rotation.z = 0;
+        resetProbeSubGroups();
+      } else if (currentProbeType === 'autozero-touch') {
+        probeModel.position.set(AUTOZERO_TOUCH_X_OFFSET, AUTOZERO_TOUCH_Y_OFFSET, AUTOZERO_TOUCH_Z_POSITION);
+        probeModel.rotation.z = 0;
+      }
+      highlightCorner(null);
+      highlightSide(probingAxis, null);
+    }
+  }
+
+  renderScene();
+};
+
+window.setProbeActive = function(isActive) {
+  if (!probeModel) return;
+  const ledColor = isActive ? 0xff0000 : 0x5cb85c;
+  if (currentProbeType === '3d-probe') {
+    setGroupColor(probeModel, 'Led', ledColor);
+  } else if (currentProbeType === 'standard-block') {
+    setGroupColor(probeModel, 'LED', ledColor);
+  } else if (currentProbeType === 'autozero-touch') {
+    setGroupColor(probeModel, 'LED', ledColor);
+    setGroupColor(probeModel, 'Led', ledColor);
+  }
+  renderScene();
+};
+
+window.resetView = resetCamera;
+
+// Signal ready
+if (window.Android) window.Android.onVisualizerReady();
+</script>
+</body>
+</html>

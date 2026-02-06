@@ -1,0 +1,894 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#1a1a2e">
+
+<LinearLayout
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <!-- Toolbar -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:background="@drawable/probe_toolbar_background"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="8dp">
+
+        <TextView
+            android:id="@+id/backBtn"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:gravity="center"
+            android:text="\u2190"
+            android:textColor="#ffffff"
+            android:textSize="22sp"
+            android:clickable="true"
+            android:focusable="true" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Probe"
+            android:textColor="#ffffff"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:layout_marginStart="8dp" />
+
+        <!-- Probe Status centered in toolbar -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="horizontal"
+            android:gravity="center">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Probe Status:"
+                android:textColor="#7f8c8d"
+                android:textSize="12sp"
+                android:layout_marginEnd="6dp" />
+
+            <View
+                android:id="@+id/probePinDot"
+                android:layout_width="12dp"
+                android:layout_height="12dp"
+                android:background="@drawable/probe_status_dot" />
+
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/jogToggleBtn"
+            android:layout_width="60dp"
+            android:layout_height="36dp"
+            android:background="@drawable/probe_jog_button_background"
+            android:gravity="center"
+            android:text="JOG"
+            android:textColor="#ffffff"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:clickable="true"
+            android:focusable="true"
+            android:layout_marginEnd="8dp" />
+
+        <TextView
+            android:id="@+id/probeStopBtn"
+            android:layout_width="72dp"
+            android:layout_height="36dp"
+            android:background="@drawable/probe_stop_button_background"
+            android:gravity="center"
+            android:text="STOP"
+            android:textColor="#ffffff"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:clickable="true"
+            android:focusable="true" />
+    </LinearLayout>
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="12dp">
+
+            <!-- Probe Type Selector -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="8dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Type:"
+                    android:textColor="#7f8c8d"
+                    android:textSize="14sp"
+                    android:layout_marginEnd="8dp" />
+
+                <Spinner
+                    android:id="@+id/probeTypeSpinner"
+                    android:layout_width="0dp"
+                    android:layout_height="40dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/spinner_background"
+                    android:foreground="@drawable/spinner_foreground"
+                    android:foregroundGravity="center_vertical|right"
+                    android:padding="8dp"
+                    android:popupBackground="#2c3e50" />
+            </LinearLayout>
+
+            <!-- Probing Axis Selector -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="8dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Axis:"
+                    android:textColor="#7f8c8d"
+                    android:textSize="14sp"
+                    android:layout_marginEnd="8dp" />
+
+                <Spinner
+                    android:id="@+id/probingAxisSpinner"
+                    android:layout_width="0dp"
+                    android:layout_height="40dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/spinner_background"
+                    android:foreground="@drawable/spinner_foreground"
+                    android:foregroundGravity="center_vertical|right"
+                    android:padding="8dp"
+                    android:popupBackground="#2c3e50" />
+            </LinearLayout>
+
+            <!-- Selection display -->
+            <TextView
+                android:id="@+id/probeSelectionText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:text="Tap a position on the diagram"
+                android:textColor="#ffffff"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="8dp" />
+
+            <!-- 3D Probe Position Selector (WebView + Three.js) -->
+            <WebView
+                android:id="@+id/probeWebView"
+                android:layout_width="match_parent"
+                android:layout_height="200dp"
+                android:layout_marginBottom="8dp"
+                android:background="@android:color/transparent" />
+
+            <!-- Dynamic Parameters Section -->
+            <LinearLayout
+                android:id="@+id/paramsContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <!-- Rapid Movement (always first, like ncSender) -->
+                <LinearLayout
+                    android:id="@+id/rapidMovementRow"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="6dp"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Rapid Movement (mm/min)"
+                        android:textColor="#bdc3c7"
+                        android:textSize="13sp" />
+
+                    <EditText
+                        android:id="@+id/rapidMovementInput"
+                        android:layout_width="100dp"
+                        android:layout_height="36dp"
+                        android:background="@drawable/probe_input_background"
+                        android:inputType="number"
+                        android:padding="8dp"
+                        android:text="2000"
+                        android:textColor="#ffffff"
+                        android:textSize="14sp"
+                        android:gravity="center" />
+                </LinearLayout>
+
+                <!-- Tool/Bit Diameter -->
+                <LinearLayout
+                    android:id="@+id/toolDiameterRow"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="6dp"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:id="@+id/toolDiameterLabel"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Tool Diameter (mm)"
+                        android:textColor="#bdc3c7"
+                        android:textSize="13sp" />
+
+                    <EditText
+                        android:id="@+id/toolDiameterInput"
+                        android:layout_width="100dp"
+                        android:layout_height="36dp"
+                        android:background="@drawable/probe_input_background"
+                        android:inputType="numberDecimal"
+                        android:padding="8dp"
+                        android:text="2"
+                        android:textColor="#ffffff"
+                        android:textSize="14sp"
+                        android:gravity="center" />
+                </LinearLayout>
+
+                <!-- Z Thickness -->
+                <LinearLayout
+                    android:id="@+id/zThicknessRow"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="6dp"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Z Thickness (mm)"
+                        android:textColor="#bdc3c7"
+                        android:textSize="13sp" />
+
+                    <EditText
+                        android:id="@+id/zThicknessInput"
+                        android:layout_width="100dp"
+                        android:layout_height="36dp"
+                        android:background="@drawable/probe_input_background"
+                        android:inputType="numberDecimal"
+                        android:padding="8dp"
+                        android:text="15"
+                        android:textColor="#ffffff"
+                        android:textSize="14sp"
+                        android:gravity="center" />
+                </LinearLayout>
+
+                <!-- XY Thickness -->
+                <LinearLayout
+                    android:id="@+id/xyThicknessRow"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="6dp"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="XY Thickness (mm)"
+                        android:textColor="#bdc3c7"
+                        android:textSize="13sp" />
+
+                    <EditText
+                        android:id="@+id/xyThicknessInput"
+                        android:layout_width="100dp"
+                        android:layout_height="36dp"
+                        android:background="@drawable/probe_input_background"
+                        android:inputType="numberDecimal"
+                        android:padding="8dp"
+                        android:text="10"
+                        android:textColor="#ffffff"
+                        android:textSize="14sp"
+                        android:gravity="center" />
+                </LinearLayout>
+
+                <!-- Z Plunge -->
+                <LinearLayout
+                    android:id="@+id/zPlungeRow"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="6dp"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Z Plunge (mm)"
+                        android:textColor="#bdc3c7"
+                        android:textSize="13sp" />
+
+                    <EditText
+                        android:id="@+id/zPlungeInput"
+                        android:layout_width="100dp"
+                        android:layout_height="36dp"
+                        android:background="@drawable/probe_input_background"
+                        android:inputType="numberDecimal"
+                        android:padding="8dp"
+                        android:text="3"
+                        android:textColor="#ffffff"
+                        android:textSize="14sp"
+                        android:gravity="center" />
+                </LinearLayout>
+
+                <!-- Z Offset -->
+                <LinearLayout
+                    android:id="@+id/zOffsetRow"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="6dp"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Z Offset (mm)"
+                        android:textColor="#bdc3c7"
+                        android:textSize="13sp" />
+
+                    <EditText
+                        android:id="@+id/zOffsetInput"
+                        android:layout_width="100dp"
+                        android:layout_height="36dp"
+                        android:background="@drawable/probe_input_background"
+                        android:inputType="numberDecimal|numberSigned"
+                        android:padding="8dp"
+                        android:text="-0.1"
+                        android:textColor="#ffffff"
+                        android:textSize="14sp"
+                        android:gravity="center" />
+                </LinearLayout>
+
+                <!-- Z Probe Distance -->
+                <LinearLayout
+                    android:id="@+id/zProbeDistanceRow"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="6dp"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Z Probe Distance (mm)"
+                        android:textColor="#bdc3c7"
+                        android:textSize="13sp" />
+
+                    <EditText
+                        android:id="@+id/zProbeDistanceInput"
+                        android:layout_width="100dp"
+                        android:layout_height="36dp"
+                        android:background="@drawable/probe_input_background"
+                        android:inputType="numberDecimal"
+                        android:padding="8dp"
+                        android:text="3"
+                        android:textColor="#ffffff"
+                        android:textSize="14sp"
+                        android:gravity="center" />
+                </LinearLayout>
+
+                <!-- X Dimension (for Center modes) -->
+                <LinearLayout
+                    android:id="@+id/xDimensionRow"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="6dp"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="X Dimension (mm)"
+                        android:textColor="#bdc3c7"
+                        android:textSize="13sp" />
+
+                    <EditText
+                        android:id="@+id/xDimensionInput"
+                        android:layout_width="100dp"
+                        android:layout_height="36dp"
+                        android:background="@drawable/probe_input_background"
+                        android:inputType="numberDecimal"
+                        android:padding="8dp"
+                        android:text="100"
+                        android:textColor="#ffffff"
+                        android:textSize="14sp"
+                        android:gravity="center" />
+                </LinearLayout>
+
+                <!-- Y Dimension (for Center modes) -->
+                <LinearLayout
+                    android:id="@+id/yDimensionRow"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="6dp"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Y Dimension (mm)"
+                        android:textColor="#bdc3c7"
+                        android:textSize="13sp" />
+
+                    <EditText
+                        android:id="@+id/yDimensionInput"
+                        android:layout_width="100dp"
+                        android:layout_height="36dp"
+                        android:background="@drawable/probe_input_background"
+                        android:inputType="numberDecimal"
+                        android:padding="8dp"
+                        android:text="100"
+                        android:textColor="#ffffff"
+                        android:textSize="14sp"
+                        android:gravity="center" />
+                </LinearLayout>
+
+                <!-- Probe Z First toggle (for Center - Outer) -->
+                <LinearLayout
+                    android:id="@+id/probeZFirstRow"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="6dp"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Probe Z First"
+                        android:textColor="#bdc3c7"
+                        android:textSize="13sp" />
+
+                    <com.google.android.material.switchmaterial.SwitchMaterial
+                        android:id="@+id/probeZFirstSwitch"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        app:trackTint="#34495e"
+                        app:thumbTint="#3498db" />
+                </LinearLayout>
+
+                <!-- Bit Diameter Selector (for AutoZero Touch) -->
+                <LinearLayout
+                    android:id="@+id/bitDiameterRow"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="6dp"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Bit Diameter"
+                        android:textColor="#bdc3c7"
+                        android:textSize="13sp" />
+
+                    <Spinner
+                        android:id="@+id/bitDiameterSpinner"
+                        android:layout_width="120dp"
+                        android:layout_height="36dp"
+                        android:background="@drawable/spinner_background"
+                        android:foreground="@drawable/spinner_foreground"
+                        android:foregroundGravity="center_vertical|right"
+                        android:padding="8dp"
+                        android:popupBackground="#2c3e50" />
+                </LinearLayout>
+
+            </LinearLayout>
+
+        </LinearLayout>
+    </ScrollView>
+
+    <!-- Start Probe Button (fixed at bottom) -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="12dp"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/probeErrorText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:textColor="#e74c3c"
+            android:textSize="12sp"
+            android:layout_marginBottom="4dp"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/startProbeBtn"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:background="@drawable/probe_start_button_background"
+            app:backgroundTint="@null"
+            android:text="START PROBE"
+            android:textColor="#2ecc71"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+</LinearLayout>
+
+<!-- Jog Pad Overlay -->
+<LinearLayout
+    android:id="@+id/jogOverlay"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#E6000000"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:visibility="gone">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Jog Controls"
+        android:textColor="#ffffff"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="16dp" />
+
+    <!-- Jog Pad Grid -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center">
+
+        <!-- Y+ Row -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center">
+
+            <View android:layout_width="70dp" android:layout_height="70dp" />
+
+            <TextView
+                android:id="@+id/jogYPlus"
+                android:layout_width="70dp"
+                android:layout_height="70dp"
+                android:background="@drawable/jog_button_background"
+                android:gravity="center"
+                android:text="Y+"
+                android:textColor="#2ecc71"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <View android:layout_width="70dp" android:layout_height="70dp" />
+
+            <View android:layout_width="20dp" android:layout_height="70dp" />
+
+            <TextView
+                android:id="@+id/jogZPlus"
+                android:layout_width="70dp"
+                android:layout_height="70dp"
+                android:background="@drawable/jog_button_background"
+                android:gravity="center"
+                android:text="Z+"
+                android:textColor="#3498db"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- X-/X+ Row -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:layout_marginVertical="4dp">
+
+            <TextView
+                android:id="@+id/jogXMinus"
+                android:layout_width="70dp"
+                android:layout_height="70dp"
+                android:background="@drawable/jog_button_background"
+                android:gravity="center"
+                android:text="X-"
+                android:textColor="#e74c3c"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <View android:layout_width="70dp" android:layout_height="70dp" />
+
+            <TextView
+                android:id="@+id/jogXPlus"
+                android:layout_width="70dp"
+                android:layout_height="70dp"
+                android:background="@drawable/jog_button_background"
+                android:gravity="center"
+                android:text="X+"
+                android:textColor="#e74c3c"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <View android:layout_width="20dp" android:layout_height="70dp" />
+
+            <View android:layout_width="70dp" android:layout_height="70dp" />
+        </LinearLayout>
+
+        <!-- Y- Row -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center">
+
+            <View android:layout_width="70dp" android:layout_height="70dp" />
+
+            <TextView
+                android:id="@+id/jogYMinus"
+                android:layout_width="70dp"
+                android:layout_height="70dp"
+                android:background="@drawable/jog_button_background"
+                android:gravity="center"
+                android:text="Y-"
+                android:textColor="#2ecc71"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <View android:layout_width="70dp" android:layout_height="70dp" />
+
+            <View android:layout_width="20dp" android:layout_height="70dp" />
+
+            <TextView
+                android:id="@+id/jogZMinus"
+                android:layout_width="70dp"
+                android:layout_height="70dp"
+                android:background="@drawable/jog_button_background"
+                android:gravity="center"
+                android:text="Z-"
+                android:textColor="#3498db"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Step Size and Feed Rate -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:layout_marginTop="16dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Step:"
+            android:textColor="#7f8c8d"
+            android:textSize="14sp"
+            android:layout_marginEnd="8dp" />
+
+        <Spinner
+            android:id="@+id/jogStepSpinner"
+            android:layout_width="100dp"
+            android:layout_height="40dp"
+            android:background="@drawable/spinner_background"
+            android:popupBackground="#2c3e50" />
+
+        <View android:layout_width="20dp" android:layout_height="1dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Feed:"
+            android:textColor="#7f8c8d"
+            android:textSize="14sp"
+            android:layout_marginEnd="8dp" />
+
+        <Spinner
+            android:id="@+id/jogFeedSpinner"
+            android:layout_width="100dp"
+            android:layout_height="40dp"
+            android:background="@drawable/spinner_background"
+            android:popupBackground="#2c3e50" />
+    </LinearLayout>
+
+    <!-- Close Button -->
+    <TextView
+        android:id="@+id/jogCloseBtn"
+        android:layout_width="120dp"
+        android:layout_height="44dp"
+        android:layout_marginTop="24dp"
+        android:background="@drawable/probe_stop_button_background"
+        android:gravity="center"
+        android:text="CLOSE"
+        android:textColor="#ffffff"
+        android:textSize="16sp"
+        android:textStyle="bold" />
+
+</LinearLayout>
+
+<!-- Disconnected Overlay -->
+<LinearLayout
+    android:id="@+id/disconnectedOverlay"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#CC1a1a2e"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:visibility="gone"
+    android:clickable="true"
+    android:focusable="true">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="⚠️"
+        android:textSize="64sp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Disconnected"
+        android:textColor="#e74c3c"
+        android:textSize="28sp"
+        android:textStyle="bold"
+        android:layout_marginTop="16dp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Connection to CNC lost"
+        android:textColor="#7f8c8d"
+        android:textSize="16sp"
+        android:layout_marginTop="8dp" />
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="32dp">
+
+        <TextView
+            android:id="@+id/reconnectBtn"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:paddingHorizontal="24dp"
+            android:gravity="center"
+            android:text="Reconnect"
+            android:textColor="#ffffff"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:background="@drawable/stop_button_background"
+            android:layout_marginEnd="16dp" />
+
+        <TextView
+            android:id="@+id/connectionMenuBtn"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:paddingHorizontal="24dp"
+            android:gravity="center"
+            android:text="Connection Menu"
+            android:textColor="#ffffff"
+            android:textSize="16sp"
+            android:background="@drawable/help_button_background" />
+    </LinearLayout>
+
+</LinearLayout>
+
+<!-- Alarm Overlay -->
+<LinearLayout
+    android:id="@+id/alarmOverlay"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#CC1a1a2e"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:visibility="gone"
+    android:clickable="true"
+    android:focusable="true">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="🚨"
+        android:textSize="64sp" />
+
+    <TextView
+        android:id="@+id/alarmTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Machine Alarm"
+        android:textColor="#e74c3c"
+        android:textSize="28sp"
+        android:textStyle="bold"
+        android:layout_marginTop="16dp" />
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="24dp">
+
+        <TextView
+            android:id="@+id/unlockBtn"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:paddingHorizontal="24dp"
+            android:gravity="center"
+            android:text="\uD83D\uDD13 Unlock"
+            android:textColor="#ffffff"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:background="@drawable/stop_button_background"
+            android:layout_marginEnd="16dp" />
+
+        <TextView
+            android:id="@+id/alarmBackBtn"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:paddingHorizontal="24dp"
+            android:gravity="center"
+            android:text="Back to Menu"
+            android:textColor="#ffffff"
+            android:textSize="16sp"
+            android:background="@drawable/help_button_background" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/alarmMessage"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Machine requires unlock"
+        android:textColor="#f39c12"
+        android:textSize="14sp"
+        android:gravity="center"
+        android:textAlignment="center"
+        android:layout_marginTop="24dp"
+        android:layout_marginHorizontal="32dp"
+        android:lineSpacingExtra="4dp" />
+
+</LinearLayout>
+
+</FrameLayout>
