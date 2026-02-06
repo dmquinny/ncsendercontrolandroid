@@ -12,16 +12,35 @@ canvas { display: block; width: 100% !important; height: 100% !important; }
 </head>
 <body>
 <div id="container"></div>
+<div id="error-overlay" style="display:none;position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:1000;justify-content:center;align-items:center;">
+  <div style="color:#aaa;text-align:center;padding:40px;font-family:sans-serif;">
+    <p style="font-size:16px;margin-bottom:10px;">Failed to load 3D viewer</p>
+    <p style="font-size:12px;color:#666;margin-bottom:20px;">Tap to retry</p>
+  </div>
+</div>
 <script>
-// Error handler - if module script fails to load (e.g. no network for CDN),
-// show an error message and notify Android
-window.addEventListener('error', function(e) {
-  console.error('Probe visualizer error:', e.message);
-  var container = document.getElementById('container');
-  container.innerHTML = '<div style="color:#aaa;text-align:center;padding:40px;font-family:sans-serif;">' +
-    '<p>Failed to load 3D viewer</p><p style="font-size:12px;color:#666;">Check network connection</p></div>';
-  if (window.Android) window.Android.onVisualizerReady();
+// Track if visualizer loaded successfully
+var visualizerLoaded = false;
+var loadAttempts = 0;
+var maxAttempts = 3;
+
+// Error overlay tap to retry
+document.getElementById('error-overlay').addEventListener('click', function() {
+  if (loadAttempts < maxAttempts) {
+    loadAttempts++;
+    document.getElementById('error-overlay').style.display = 'none';
+    location.reload();
+  }
 });
+
+// Error handler - if module script fails to load, show retry option
+window.addEventListener('error', function(e) {
+  if (visualizerLoaded) return; // Ignore errors after successful load
+  console.error('Probe visualizer error:', e.message);
+  document.getElementById('error-overlay').style.display = 'flex';
+  // Still notify Android so it knows the view is "ready" (even if failed)
+  if (window.Android) window.Android.onVisualizerReady();
+}, true);
 </script>
 <script type="importmap">
 {
@@ -763,7 +782,8 @@ window.setProbeActive = function(isActive) {
 
 window.resetView = resetCamera;
 
-// Signal ready
+// Mark as successfully loaded and signal ready
+visualizerLoaded = true;
 if (window.Android) window.Android.onVisualizerReady();
 </script>
 </body>

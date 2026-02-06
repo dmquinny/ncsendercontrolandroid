@@ -256,7 +256,11 @@ class ProbeActivity : AppCompatActivity(), ConnectionManager.ConnectionStateList
             settings.domStorageEnabled = true
             settings.allowFileAccess = true
             settings.allowContentAccess = true
+            settings.cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            
+            // Clear cache to prevent stale asset issues
+            clearCache(true)
 
             webChromeClient = object : WebChromeClient() {
                 override fun onConsoleMessage(consoleMessage: android.webkit.ConsoleMessage?): Boolean {
@@ -269,6 +273,12 @@ class ProbeActivity : AppCompatActivity(), ConnectionManager.ConnectionStateList
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
+                    Log.d(TAG, "WebView page finished loading: $url")
+                }
+                
+                override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: android.webkit.WebResourceError?) {
+                    Log.e(TAG, "WebView error: ${error?.description} for ${request?.url}")
+                    super.onReceivedError(view, request, error)
                 }
 
                 override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
