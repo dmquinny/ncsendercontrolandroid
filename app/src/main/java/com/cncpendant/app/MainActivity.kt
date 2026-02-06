@@ -282,6 +282,10 @@ class MainActivity : AppCompatActivity() {
                         showSettingsDialog()
                         true
                     }
+                    R.id.menu_about -> {
+                        showAboutDialog()
+                        true
+                    }
                     else -> false
                 }
             }
@@ -1777,6 +1781,29 @@ class MainActivity : AppCompatActivity() {
         getSharedPreferences("prefs", MODE_PRIVATE).edit()
             .putInt(PREF_DIAL_POINTS, points)
             .apply()
+    }
+
+    // --- About Dialog ---
+
+    private fun showAboutDialog() {
+        val version = try {
+            packageManager.getPackageInfo(packageName, 0).versionName
+        } catch (e: Exception) {
+            "Unknown"
+        }
+        
+        AlertDialog.Builder(this)
+            .setTitle("About ncSender Control")
+            .setMessage("Version: $version\n\nA mobile pendant for CNC control via ncSender.")
+            .setPositiveButton("OK", null)
+            .setNeutralButton("Check for Updates") { _, _ ->
+                checkForUpdates()
+            }
+            .setNegativeButton("GitHub") { _, _ ->
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/dmquinny/ncsendercontrolandroid/"))
+                startActivity(intent)
+            }
+            .show()
     }
 
     // --- Settings Dialog ---
