@@ -156,6 +156,20 @@ class JogDialView @JvmOverloads constructor(
         dialRotation = ((dialRotation % 360f) + 360f) % 360f
         invalidate()
     }
+    
+    /**
+     * Set the dial rotation to match an absolute encoder position.
+     * This keeps the dial in sync even if some encoder events are dropped.
+     * @param position The absolute encoder position in ticks
+     */
+    fun syncToEncoderPosition(position: Long) {
+        // Map encoder position to dial rotation (modulo numTicks)
+        val tickPosition = (position % numTicks).toInt()
+        // Handle negative positions correctly
+        val normalizedTick = if (tickPosition < 0) tickPosition + numTicks else tickPosition
+        dialRotation = normalizedTick * degreesPerTick
+        invalidate()
+    }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)

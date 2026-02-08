@@ -98,7 +98,7 @@ object UpdateChecker {
             }
         }
         
-        val builder = AlertDialog.Builder(context)
+        val builder = AlertDialog.Builder(context, R.style.DarkAlertDialog)
             .setTitle("Update Available")
             .setMessage(message)
             .setPositiveButton("Download") { _, _ ->

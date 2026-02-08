@@ -20,6 +20,7 @@ class WebSocketManager(private val context: Context) {
     private var currentUrl: String? = null
     private val client = OkHttpClient.Builder()
         .readTimeout(0, TimeUnit.MILLISECONDS)
+        .pingInterval(30, TimeUnit.SECONDS)  // Keep connection alive with periodic pings
         .build()
     private val gson = Gson()
     
@@ -157,7 +158,7 @@ class WebSocketManager(private val context: Context) {
         send(message.toString())
     }
 
-    private fun getHttpBaseUrl(): String? {
+    fun getHttpBaseUrl(): String? {
         // Convert ws://host:port/ws to http://host:port
         val wsUrl = currentUrl ?: return null
         return wsUrl

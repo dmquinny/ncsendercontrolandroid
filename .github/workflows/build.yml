@@ -66,10 +66,16 @@ jobs:
         cd rp2040-encoder
         pio run -e pico
 
+    - name: Build Tiny2040 firmware
+      run: |
+        cd rp2040-encoder
+        pio run -e tiny2040
+
     - name: Rename firmware files
       run: |
         cp rp2040-encoder/.pio/build/rp2040zero/firmware.uf2 encoder-rp2040zero.uf2
         cp rp2040-encoder/.pio/build/pico/firmware.uf2 encoder-pico.uf2
+        cp rp2040-encoder/.pio/build/tiny2040/firmware.uf2 encoder-tiny2040.uf2
 
     - name: Upload RP2040-Zero firmware artifact
       uses: actions/upload-artifact@v4
@@ -83,6 +89,13 @@ jobs:
       with:
         name: encoder-pico
         path: encoder-pico.uf2
+        retention-days: 30
+
+    - name: Upload Tiny2040 firmware artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: encoder-tiny2040
+        path: encoder-tiny2040.uf2
         retention-days: 30
 
   release:
@@ -109,6 +122,12 @@ jobs:
         name: encoder-pico
         path: ./artifacts
 
+    - name: Download Tiny2040 firmware
+      uses: actions/download-artifact@v4
+      with:
+        name: encoder-tiny2040
+        path: ./artifacts
+
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
@@ -116,6 +135,7 @@ jobs:
           ./artifacts/ncSenderControl.apk
           ./artifacts/encoder-rp2040zero.uf2
           ./artifacts/encoder-pico.uf2
+          ./artifacts/encoder-tiny2040.uf2
         generate_release_notes: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

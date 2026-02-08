@@ -4,10 +4,11 @@ Firmware for RP2040-based microcontrollers to read a 100 PPR (pulses per revolut
 
 ## Supported Boards
 
-| Board | LED Type | Firmware File |
-|-------|----------|---------------|
-| **Waveshare RP2040-Zero** | RGB NeoPixel (GP16) | `encoder-rp2040zero.uf2` |
-| **Raspberry Pi Pico** | Green LED (GP25) | `encoder-pico.uf2` |
+| Board | LED Type | Firmware File | Button Pins |
+|-------|----------|---------------|-------------|
+| **Waveshare RP2040-Zero** | RGB NeoPixel (GP16) | `encoder-rp2040zero.uf2` | GP2-15, GP17-28 |
+| **Raspberry Pi Pico** | Green LED (GP25) | `encoder-pico.uf2` | GP2-24, GP26-28 |
+| **Pimoroni Tiny2040** | RGB LED (GP18-20) | `encoder-tiny2040.uf2` | GP2-7, GP26-28 |
 
 ## Quick Start
 
@@ -26,6 +27,33 @@ Firmware for RP2040-based microcontrollers to read a 100 PPR (pulses per revolut
 | GND | GND | Ground |
 
 **Note:** The RP2040 has internal pull-up resistors enabled on GP0/GP1. If your encoder has open-collector outputs, no external pull-ups are needed. For push-pull encoders, this still works fine.
+
+## Button Support
+
+The firmware supports up to 12 physical buttons connected to GPIO pins. Buttons should be wired between the GPIO pin and GND (active LOW with internal pull-ups).
+
+### Available GPIO Pins for Buttons
+GP2-GP15, GP17-GP22, GP26-GP28 (Pins GP0, GP1 are used by encoder; GP16/GP25 for LED)
+
+### Button Wiring
+```
+GPIO Pin ---- Button ---- GND
+         (normally open)
+```
+
+### Configuration
+Buttons are configured in the Android app under Settings → Configure Button Functions. For each button you can assign:
+- **GPIO Pin**: Which pin the button is connected to
+- **Function**: What action to perform (jog, home, zero, etc.)
+
+### Available Functions
+- Jog X+/X-/Y+/Y-/Z+/Z-
+- Home All/X/Y/Z
+- Set Zero All/X/Y/Z
+- Feed Hold / Cycle Start / Stop
+- Spindle Toggle / Coolant Toggle
+- Probe Z
+- Select X/Y/Z Axis (for encoder jog)
 
 ## Building from Source (PlatformIO)
 
@@ -48,9 +76,15 @@ pio run -e pico           # Build
 pio run -e pico -t upload # Upload
 ```
 
+**For Pimoroni Tiny2040:**
+```bash
+pio run -e tiny2040           # Build
+pio run -e tiny2040 -t upload # Upload
+```
+
 Or use VS Code:
 1. Connect board while holding BOOT button (enters bootloader mode)
-2. Select the environment (rp2040zero or pico) in the status bar
+2. Select the environment (rp2040zero, pico, or tiny2040) in the status bar
 3. Click **PlatformIO: Build** (checkmark icon) to compile
 4. Click **PlatformIO: Upload** (arrow icon) to flash
 5. Open **PlatformIO: Serial Monitor** to see output
@@ -62,6 +96,7 @@ If automatic upload fails:
 3. Copy the firmware file:
    - RP2040-Zero: `.pio/build/rp2040zero/firmware.uf2`
    - Pico: `.pio/build/pico/firmware.uf2`
+   - Tiny2040: `.pio/build/tiny2040/firmware.uf2`
 
 ## CircuitPython Alternative (RP2040-Zero only)
 
@@ -94,16 +129,25 @@ The encoder sends JSON messages over USB serial at 115200 baud:
 - `delta`: Number of clicks since last message (+/- indicates direction)
 - `position`: Position counter (0-99, wraps at 100)
 
-### Commands (Android → RP2040)
+### Button Events (RP2040 → Android)
 ```json
-{"type": "reset", "position": 0}  // Reset position counter
-{"type": "ping"}                   // Request status
-{"type": "led", "on": true}        // Control LED
+{"type": "button", "pin": 2, "state": "pressed"}
+{"type": "button", "pin": 2, "state": "released"}
 ```
 
-### Response to Ping
+### Commands (Android → RP2040)
 ```json
-{"type": "pong", "position": 123}
+{"type": "reset", "position": 0}     // Reset position counter
+{"type": "ping"}                      // Request status
+{"type": "buttons", "pins": [2,3,4]} // Configure button pins
+{"type": "clear_buttons"}             // Clear button config
+```
+
+### Responses
+```json
+{"type": "pong", "position": 42}
+{"type": "buttons_configured", "count": 3}
+{"type": "buttons_cleared"}
 ```
 
 ## Resolution
@@ -118,14 +162,14 @@ The Android app maps encoder deltas to jog commands based on your step size sett
 
 ## LED Indicators
 
-**RP2040-Zero (RGB NeoPixel):**
+**RP2040-Zero (RGB NeoPixel) & Tiny2040 (RGB LED):**
 - **Red → Green → Blue**: Startup sequence
-- **Green flash**: Encoder movement detected
+- **Green flash**: Encoder movement or button press
 - **Blue flash**: Heartbeat (every 2 seconds)
 
 **Raspberry Pi Pico (Green LED):**
 - **Blinks on startup**: Firmware initialized
-- **Flash on movement**: Encoder activity
+- **Flash on activity**: Encoder movement or button press
 - **Periodic flash**: Heartbeat
 
 ## Troubleshooting
@@ -135,10 +179,6 @@ The Android app maps encoder deltas to jog commands based on your step size sett
    - Copy firmware `.uf2` to the RPI-RP2 drive manually
 
 2. **Encoder not detected:**
-   - Hold BOOT button while plugging in USB
-   - Copy `.pio/build/rp2040zero/firmware.uf2` to the RPI-RP2 drive manually
-
-3. **Encoder not detected:**
    - Check wiring (A→GP0, B→GP1, GND→GND)
    - Verify encoder VCC is 3.3V (or use level shifter for 5V encoders)
 
@@ -146,7 +186,12 @@ The Android app maps encoder deltas to jog commands based on your step size sett
    - Reduce encoder rotation speed
    - Check for loose connections
 
-4. **Android app doesn't see encoder:**
+4. **Buttons not working:**
+   - Check button is wired between GPIO pin and GND
+   - Ensure pin is configured in the Android app settings
+   - Verify button function is assigned (not "None")
+
+5. **Android app doesn't see encoder:**
    - Make sure USB OTG is supported on your device
    - Grant USB permission when prompted
    - Check the encoder status in the app UI

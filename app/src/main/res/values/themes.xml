@@ -10,5 +10,21 @@
         <item name="android:statusBarColor">#1a1a2e</item>
         <item name="android:navigationBarColor">#1a1a2e</item>
         <item name="android:windowBackground">#1a1a2e</item>
+        <item name="alertDialogTheme">@style/DarkAlertDialog</item>
+    </style>
+
+    <style name="DarkAlertDialog" parent="ThemeOverlay.MaterialComponents.Dialog.Alert">
+        <item name="android:background">#1a1a2e</item>
+        <item name="android:windowBackground">#1a1a2e</item>
+        <item name="colorSurface">#1a1a2e</item>
+        <item name="dialogCornerRadius">12dp</item>
+        <item name="android:textColorPrimary">#FFFFFF</item>
+        <item name="android:textColorSecondary">#7f8c9a</item>
+        <item name="buttonBarPositiveButtonStyle">@style/DarkDialogButton</item>
+        <item name="buttonBarNegativeButtonStyle">@style/DarkDialogButton</item>
+    </style>
+
+    <style name="DarkDialogButton" parent="Widget.MaterialComponents.Button.TextButton.Dialog">
+        <item name="android:textColor">#3498db</item>
     </style>
 </resources>

@@ -2286,7 +2286,7 @@ class VoiceControlActivity : AppCompatActivity(), ConnectionManager.ConnectionSt
         }
         dialogView.addView(wakeWordInfo)
 
-        AlertDialog.Builder(this)
+        AlertDialog.Builder(this, R.style.DarkAlertDialog)
             .setTitle("Voice Control Settings")
             .setView(dialogView)
             .setPositiveButton("Save") { _, _ ->
@@ -2388,7 +2388,7 @@ class VoiceControlActivity : AppCompatActivity(), ConnectionManager.ConnectionSt
             ⚠️ Job start commands blocked by default.
         """.trimIndent()
 
-        AlertDialog.Builder(this)
+        AlertDialog.Builder(this, R.style.DarkAlertDialog)
             .setTitle("Voice Commands Help")
             .setMessage(helpText)
             .setPositiveButton("OK", null)

@@ -11,8 +11,8 @@ android {
         applicationId = "com.cncpendant.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
-        versionName = "1.0.1"
+        versionCode = 4
+        versionName = "1.2.0"
     }
 
     buildTypes {
@@ -36,6 +36,12 @@ android {
 
     buildFeatures {
         viewBinding = true
+    }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true  // Required until libaums supports 16KB page alignment
+        }
     }
 
     applicationVariants.all {
@@ -64,4 +70,7 @@ dependencies {
     
     // USB Serial for RP2040 encoder
     implementation("com.github.mik3y:usb-serial-for-android:3.7.0")
+    
+    // USB Mass Storage for direct firmware flashing
+    implementation("me.jahnen.libaums:core:0.10.0")
 }

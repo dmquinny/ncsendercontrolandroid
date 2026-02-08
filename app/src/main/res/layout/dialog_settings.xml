@@ -1,21 +1,203 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content">
+
+<LinearLayout
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:padding="20dp">
+    android:padding="24dp"
+    android:background="#1a1a2e">
 
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Dial Points"
-        android:textSize="14sp"
-        android:layout_marginBottom="8dp" />
-
-    <Spinner
-        android:id="@+id/dialPointsSpinner"
+    <!-- Dial Points Section -->
+    <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:background="@android:drawable/btn_dropdown" />
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:background="@drawable/dialog_card_background"
+        android:layout_marginBottom="16dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Dial Points"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textColor="#FFFFFF"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Number of detents on the jog dial"
+            android:textSize="12sp"
+            android:textColor="#7f8c9a"
+            android:layout_marginBottom="12dp" />
+
+        <Spinner
+            android:id="@+id/dialPointsSpinner"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="@drawable/spinner_background"
+            android:popupBackground="#2c3e50" />
+
+    </LinearLayout>
+
+    <!-- Encoder Board Section -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:background="@drawable/dialog_card_background"
+        android:layout_marginBottom="16dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Encoder Board"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textColor="#FFFFFF"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Select your RP2040 board type"
+            android:textSize="12sp"
+            android:textColor="#7f8c9a"
+            android:layout_marginBottom="12dp" />
+
+        <Spinner
+            android:id="@+id/boardTypeSpinner"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="@drawable/spinner_background"
+            android:popupBackground="#2c3e50" />
+
+        <TextView
+            android:id="@+id/boardPinCountLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="26 GPIO pins available"
+            android:textSize="11sp"
+            android:textColor="#4CAF50"
+            android:layout_marginTop="8dp" />
+
+    </LinearLayout>
+
+    <!-- Encoder Buttons Section -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:background="@drawable/dialog_card_background">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Encoder Buttons"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textColor="#FFFFFF"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Configure physical buttons on the encoder device"
+            android:textSize="12sp"
+            android:textColor="#7f8c9a"
+            android:layout_marginBottom="16dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="12dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Number of buttons"
+                android:textSize="14sp"
+                android:textColor="#FFFFFF" />
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
+
+            <Spinner
+                android:id="@+id/numButtonsSpinner"
+                android:layout_width="80dp"
+                android:layout_height="44dp"
+                android:background="@drawable/spinner_background"
+                android:popupBackground="#2c3e50" />
+
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/configureButtonsBtn"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:text="Configure Functions"
+            android:textAllCaps="false"
+            android:textColor="#FFFFFF"
+            android:background="@drawable/dialog_button_background" />
+
+    </LinearLayout>
+
+    <!-- Flash Firmware Section -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:background="@drawable/dialog_card_background"
+        android:layout_marginTop="16dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Flash Firmware"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textColor="#FFFFFF"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Upload firmware to RP2040 in BOOTSEL mode"
+            android:textSize="12sp"
+            android:textColor="#7f8c9a"
+            android:layout_marginBottom="12dp" />
+
+        <TextView
+            android:id="@+id/firmwareInfoLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Firmware: encoder_rp2040zero.uf2"
+            android:textSize="12sp"
+            android:textColor="#3498db"
+            android:layout_marginBottom="12dp" />
+
+        <Button
+            android:id="@+id/flashFirmwareBtn"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:text="Flash Firmware"
+            android:textAllCaps="false"
+            android:textColor="#FFFFFF"
+            android:background="@drawable/dialog_button_background" />
+
+    </LinearLayout>
 
 </LinearLayout>
+</ScrollView>

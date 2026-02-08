@@ -23,6 +23,7 @@ import android.util.Log
 import android.graphics.drawable.GradientDrawable
 import android.text.TextUtils
 import android.view.Gravity
+import android.widget.Button
 import android.widget.ImageView
 import android.widget.LinearLayout as WidgetLinearLayout
 import android.widget.TextView
@@ -40,9 +41,14 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import java.io.IOException
+import java.net.HttpURLConnection
 import java.net.Inet4Address
 import java.net.NetworkInterface
+import java.net.URL
 import java.util.concurrent.TimeUnit
+import androidx.lifecycle.lifecycleScope
+import androidx.activity.result.contract.ActivityResultContracts
+import android.provider.DocumentsContract
 
 class MainActivity : AppCompatActivity() {
 
@@ -56,8 +62,25 @@ class MainActivity : AppCompatActivity() {
     // USB Encoder support
     private var usbEncoderManager: UsbEncoderManager? = null
     private var encoderConnected = false
+    
+    // USB Mass Storage for firmware flashing
+    private val usbMassStorageManager by lazy { UsbMassStorageManager(this) }
     private var lastEncoderJogSentAt = 0L
     private val ENCODER_MIN_SEND_INTERVAL_MS = 100L
+    private var lastEncoderPositionActedOn: Long? = null  // Track position to catch up on dropped messages
+    
+    // FN modifier button state
+    private var isFnHeld = false
+    
+    // Firmware flashing - track selected board for SAF callback
+    private var pendingFirmwareBoardType: BoardType? = null
+    
+    // SAF launcher for creating firmware file on RPI-RP2
+    private val firmwareFileLauncher = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("application/octet-stream")
+    ) { uri ->
+        uri?.let { writeFirmwareToUri(it) }
+    }
 
     private var selectedAxis: String = ""
     private var currentStep: Float = 0.05f
@@ -96,6 +119,10 @@ class MainActivity : AppCompatActivity() {
     private var scanJob: Job? = null
     private var isHoming = false
     private var isHomed = false
+    
+    // Background timeout - disconnect after 30 minutes in background
+    private val BACKGROUND_TIMEOUT_MS = 30L * 60L * 1000L  // 30 minutes
+    private var backgroundDisconnectRunnable: Runnable? = null
     private var homingCycle = 0
     private var currentActiveState = ""
     private var senderStatus = ""
@@ -180,6 +207,13 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         
+        // Cancel any pending background disconnect
+        backgroundDisconnectRunnable?.let {
+            jogHandler.removeCallbacks(it)
+            backgroundDisconnectRunnable = null
+            Log.d(TAG, "Cancelled background disconnect timer")
+        }
+        
         // Check for updates (with cooldown to avoid checking too often)
         val now = System.currentTimeMillis()
         if (now - lastUpdateCheckTime > UPDATE_CHECK_INTERVAL_MS) {
@@ -204,6 +238,32 @@ class MainActivity : AppCompatActivity() {
             isConnected = false
             updateConnectionUI(false)
             binding.connectBtn.text = "Connect"
+        }
+    }
+    
+    override fun onStop() {
+        super.onStop()
+        
+        // Schedule disconnect after 30 minutes in background
+        // This keeps the connection alive for quick app switches but saves resources for long backgrounds
+        if (isConnected) {
+            backgroundDisconnectRunnable = Runnable {
+                Log.d(TAG, "Background timeout reached, disconnecting WebSocket")
+                disconnect()
+                backgroundDisconnectRunnable = null
+            }
+            jogHandler.postDelayed(backgroundDisconnectRunnable!!, BACKGROUND_TIMEOUT_MS)
+            Log.d(TAG, "Scheduled background disconnect in ${BACKGROUND_TIMEOUT_MS / 1000 / 60} minutes")
+        }
+    }
+    
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // Handle USB device attached intent when activity is already running
+        // This prevents the activity from being recreated
+        if (intent.action == android.hardware.usb.UsbManager.ACTION_USB_DEVICE_ATTACHED) {
+            Log.d(TAG, "USB device attached via onNewIntent")
+            // The UsbEncoderManager will handle the device detection via its broadcast receiver
         }
     }
 
@@ -1665,37 +1725,282 @@ class MainActivity : AppCompatActivity() {
             setEncoderListener(object : UsbEncoderManager.EncoderListener {
                 override fun onEncoderConnected() {
                     encoderConnected = true
+                    lastEncoderPositionActedOn = null  // Reset for fresh start
                     Log.d(TAG, "USB Encoder connected")
                     Toast.makeText(this@MainActivity, "USB Encoder connected", Toast.LENGTH_SHORT).show()
+                    
+                    // Send button configuration to the device
+                    sendButtonConfigToEncoder()
                 }
                 
                 override fun onEncoderDisconnected() {
                     encoderConnected = false
+                    lastEncoderPositionActedOn = null  // Clear stale position
                     Log.d(TAG, "USB Encoder disconnected")
                     Toast.makeText(this@MainActivity, "USB Encoder disconnected", Toast.LENGTH_SHORT).show()
                 }
                 
                 override fun onEncoderRotation(delta: Int, position: Long) {
-                    handleEncoderRotation(delta)
+                    handleEncoderRotation(delta, position)
                 }
                 
                 override fun onEncoderError(error: String) {
                     Log.e(TAG, "USB Encoder error: $error")
+                }
+                
+                override fun onButtonPressed(pin: Int) {
+                    handleButtonEvent(pin, true)
+                }
+                
+                override fun onButtonReleased(pin: Int) {
+                    handleButtonEvent(pin, false)
                 }
             })
             initialize()
         }
     }
     
-    private fun handleEncoderRotation(delta: Int) {
+    private fun handleButtonEvent(pin: Int, pressed: Boolean) {
+        // Get the config for this pin to check if it's an FN modifier
+        val config = ButtonConfigManager.getConfigForPin(this, pin)
+        
+        // Handle FN modifier button state (track press AND release)
+        if (config != null && config.idleFunction == ButtonFunction.FN_MODIFIER) {
+            isFnHeld = pressed
+            Log.d(TAG, "FN button ${if (pressed) "pressed" else "released"}: isFnHeld=$isFnHeld")
+            return  // FN button doesn't execute any action itself
+        }
+        
+        if (!pressed) return  // Only act on button press for other functions
+        
+        // Determine which function to execute based on FN state and job state
+        val function = if (isFnHeld && config != null && config.secondaryFunction != ButtonFunction.NONE) {
+            // FN is held and secondary function is defined
+            config.secondaryFunction
+        } else {
+            // Normal function based on job state
+            ButtonConfigManager.getFunctionForPin(this, pin, isJobRunning())
+        }
+        
+        if (function == null || function == ButtonFunction.NONE || function == ButtonFunction.FN_MODIFIER) return
+        
+        Log.d(TAG, "Button pressed: pin=$pin, function=${function.id}, fnHeld=$isFnHeld, jobRunning=${isJobRunning()}")
+        playClick()
+        
+        executeButtonFunction(function)
+    }
+    
+    private fun executeButtonFunction(function: ButtonFunction) {
+        when (function) {
+            // Jog commands
+            ButtonFunction.JOG_X_PLUS -> executeJogButton("X", 1)
+            ButtonFunction.JOG_X_MINUS -> executeJogButton("X", -1)
+            ButtonFunction.JOG_Y_PLUS -> executeJogButton("Y", 1)
+            ButtonFunction.JOG_Y_MINUS -> executeJogButton("Y", -1)
+            ButtonFunction.JOG_Z_PLUS -> executeJogButton("Z", 1)
+            ButtonFunction.JOG_Z_MINUS -> executeJogButton("Z", -1)
+            
+            // Home commands
+            ButtonFunction.HOME_ALL -> webSocketManager.sendCommand("\$H")
+            ButtonFunction.HOME_X -> webSocketManager.sendCommand("\$HX")
+            ButtonFunction.HOME_Y -> webSocketManager.sendCommand("\$HY")
+            ButtonFunction.HOME_Z -> webSocketManager.sendCommand("\$HZ")
+            
+            // Zero (WCS) commands
+            ButtonFunction.ZERO_ALL -> webSocketManager.sendCommand("G10 L20 P1 X0 Y0 Z0")
+            ButtonFunction.ZERO_X -> webSocketManager.sendCommand("G10 L20 P1 X0")
+            ButtonFunction.ZERO_Y -> webSocketManager.sendCommand("G10 L20 P1 Y0")
+            ButtonFunction.ZERO_Z -> webSocketManager.sendCommand("G10 L20 P1 Z0")
+            
+            // Machine control
+            ButtonFunction.FEED_HOLD -> webSocketManager.sendCommand("!")
+            ButtonFunction.CYCLE_START -> webSocketManager.sendCommand("~")
+            ButtonFunction.STOP -> webSocketManager.sendCommand("\\x18")  // Ctrl+X soft reset
+            
+            // Spindle/Coolant
+            ButtonFunction.SPINDLE_TOGGLE -> webSocketManager.sendCommand("M5")  // Toggle would need state tracking
+            ButtonFunction.COOLANT_TOGGLE -> webSocketManager.sendCommand("M9")  // Toggle would need state tracking
+            
+            // Probing
+            ButtonFunction.PROBE_Z -> {
+                // Open probe activity
+                val intent = Intent(this, ProbeActivity::class.java)
+                intent.putExtra("wsUrl", binding.wsUrlInput.text.toString())
+                startActivity(intent)
+            }
+            
+            // Axis selection
+            ButtonFunction.SELECT_X -> selectAxis("X")
+            ButtonFunction.SELECT_Y -> selectAxis("Y")
+            ButtonFunction.SELECT_Z -> selectAxis("Z")
+            
+            // Feed Override commands (realtime)
+            ButtonFunction.FEED_OVERRIDE_100 -> webSocketManager.sendCommand("\\x90")  // Feed 100%
+            ButtonFunction.FEED_OVERRIDE_PLUS_10 -> webSocketManager.sendCommand("\\x91")  // Feed +10%
+            ButtonFunction.FEED_OVERRIDE_MINUS_10 -> webSocketManager.sendCommand("\\x92")  // Feed -10%
+            ButtonFunction.FEED_OVERRIDE_PLUS_1 -> webSocketManager.sendCommand("\\x93")  // Feed +1%
+            ButtonFunction.FEED_OVERRIDE_MINUS_1 -> webSocketManager.sendCommand("\\x94")  // Feed -1%
+            
+            // Rapid Override commands (realtime)
+            ButtonFunction.RAPID_OVERRIDE_100 -> webSocketManager.sendCommand("\\x95")  // Rapid 100%
+            ButtonFunction.RAPID_OVERRIDE_50 -> webSocketManager.sendCommand("\\x96")   // Rapid 50%
+            ButtonFunction.RAPID_OVERRIDE_25 -> webSocketManager.sendCommand("\\x97")   // Rapid 25%
+            
+            // Spindle Override commands (realtime)
+            ButtonFunction.SPINDLE_OVERRIDE_100 -> webSocketManager.sendCommand("\\x99")  // Spindle 100%
+            ButtonFunction.SPINDLE_OVERRIDE_PLUS_10 -> webSocketManager.sendCommand("\\x9A")  // Spindle +10%
+            ButtonFunction.SPINDLE_OVERRIDE_MINUS_10 -> webSocketManager.sendCommand("\\x9B")  // Spindle -10%
+            ButtonFunction.SPINDLE_OVERRIDE_PLUS_1 -> webSocketManager.sendCommand("\\x9C")  // Spindle +1%
+            ButtonFunction.SPINDLE_OVERRIDE_MINUS_1 -> webSocketManager.sendCommand("\\x9D")  // Spindle -1%
+            
+            // Jog step size control
+            ButtonFunction.JOG_STEP_CYCLE -> cycleJogStep()
+            ButtonFunction.JOG_STEP_SMALL -> setJogStep(0.1f)
+            ButtonFunction.JOG_STEP_MEDIUM -> setJogStep(1.0f)
+            ButtonFunction.JOG_STEP_LARGE -> setJogStep(10.0f)
+            
+            // Diagonal jog commands
+            ButtonFunction.JOG_XY_PLUS_PLUS -> executeDiagonalJog(1, 1)
+            ButtonFunction.JOG_XY_PLUS_MINUS -> executeDiagonalJog(1, -1)
+            ButtonFunction.JOG_XY_MINUS_PLUS -> executeDiagonalJog(-1, 1)
+            ButtonFunction.JOG_XY_MINUS_MINUS -> executeDiagonalJog(-1, -1)
+            
+            // Machine control
+            ButtonFunction.SOFT_RESET -> webSocketManager.sendCommand("\\x18")  // Ctrl+X soft reset
+            ButtonFunction.UNLOCK -> webSocketManager.sendCommand("\$X")  // Unlock alarm
+            
+            // Tool functions
+            ButtonFunction.TOOL_LENGTH_SENSOR -> webSocketManager.sendCommand("\$TLS")
+            
+            // Job control
+            ButtonFunction.JOB_START -> startLoadedJob()
+            
+            // Macros (execute via ncSender M98 macro system)
+            ButtonFunction.RUN_MACRO_1 -> executeMacro(1)
+            ButtonFunction.RUN_MACRO_2 -> executeMacro(2)
+            ButtonFunction.RUN_MACRO_3 -> executeMacro(3)
+            ButtonFunction.RUN_MACRO_4 -> executeMacro(4)
+            ButtonFunction.RUN_MACRO_5 -> executeMacro(5)
+            ButtonFunction.RUN_MACRO_6 -> executeMacro(6)
+            ButtonFunction.RUN_MACRO_7 -> executeMacro(7)
+            ButtonFunction.RUN_MACRO_8 -> executeMacro(8)
+            ButtonFunction.RUN_MACRO_9 -> executeMacro(9)
+            
+            ButtonFunction.FN_MODIFIER -> { /* Handled separately */ }
+            ButtonFunction.NONE -> { /* Do nothing */ }
+        }
+    }
+    
+    private fun executeJogButton(axis: String, direction: Int) {
+        if (!isConnected || jogDisabled()) return
+        
+        val distance = currentStep * direction
+        webSocketManager.sendJogCommand(axis, distance, currentFeedRate)
+    }
+    
+    private fun executeDiagonalJog(xDir: Int, yDir: Int) {
+        if (!isConnected || jogDisabled()) return
+        
+        // Send two jog commands for diagonal movement
+        val xDistance = currentStep * xDir
+        val yDistance = currentStep * yDir
+        // Use G91 relative mode with combined XY move
+        webSocketManager.sendCommand("\$J=G91 X$xDistance Y$yDistance F$currentFeedRate")
+    }
+    
+    private fun cycleJogStep() {
+        // Cycle through common step sizes: 0.1 -> 1 -> 10 -> 0.1
+        currentStep = when {
+            currentStep < 0.5f -> 1.0f
+            currentStep < 5.0f -> 10.0f
+            else -> 0.1f
+        }
+        syncStepSpinner()
+        Toast.makeText(this, "Step: $currentStep mm", Toast.LENGTH_SHORT).show()
+    }
+    
+    private fun setJogStep(step: Float) {
+        currentStep = step
+        syncStepSpinner()
+        Toast.makeText(this, "Step: $currentStep mm", Toast.LENGTH_SHORT).show()
+    }
+    
+    private fun syncStepSpinner() {
+        val stepIndex = getStepValues().indexOfFirst { it == currentStep }
+        if (stepIndex >= 0) binding.stepSpinner.setSelection(stepIndex)
+        saveUserSettings()
+    }
+    
+    private fun startLoadedJob() {
+        // Start the currently loaded job via HTTP API
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val baseUrl = webSocketManager.getHttpBaseUrl()
+                val url = URL("$baseUrl/api/gcode-job")
+                val connection = url.openConnection() as HttpURLConnection
+                connection.requestMethod = "POST"
+                connection.setRequestProperty("Content-Type", "application/json")
+                connection.doOutput = true
+                
+                // Send empty JSON body - server will use currently loaded file
+                connection.outputStream.use { os ->
+                    os.write("{}".toByteArray())
+                }
+                
+                val responseCode = connection.responseCode
+                withContext(Dispatchers.Main) {
+                    if (responseCode == 200) {
+                        Toast.makeText(this@MainActivity, "Job started", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(this@MainActivity, "Failed to start job", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, "Error starting job: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+    
+    private fun executeMacro(macroId: Int) {
+        // Execute M98 macro via HTTP API
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val baseUrl = webSocketManager.getHttpBaseUrl()
+                val url = URL("$baseUrl/api/m98-macros/$macroId/execute")
+                val connection = url.openConnection() as HttpURLConnection
+                connection.requestMethod = "POST"
+                connection.setRequestProperty("Content-Type", "application/json")
+                
+                val responseCode = connection.responseCode
+                withContext(Dispatchers.Main) {
+                    if (responseCode == 200) {
+                        Toast.makeText(this@MainActivity, "Macro $macroId executed", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(this@MainActivity, "Macro $macroId not found", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, "Error running macro: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+    
+    private fun handleEncoderRotation(delta: Int, position: Long) {
         // Firmware now reports actual clicks (not raw pulses), use directly
         if (delta == 0) return
         
-        // Rotate the on-screen dial to match the encoder
-        binding.jogDial.rotateByTicks(delta)
+        // Sync the on-screen dial to the encoder's absolute position
+        // This keeps dial in sync even if some events are dropped when moving fast
+        binding.jogDial.syncToEncoderPosition(position)
         
         // Only send jog commands if connected and axis selected
         if (!isConnected || jogDisabled() || selectedAxis.isEmpty()) {
+            // Even when not jogging, track position so we don't "catch up" later
+            lastEncoderPositionActedOn = position
             return
         }
         
@@ -1706,9 +2011,20 @@ class MainActivity : AppCompatActivity() {
         
         lastEncoderJogSentAt = now
         
+        // Calculate movement from position difference to catch up on any dropped messages
+        val lastPos = lastEncoderPositionActedOn
+        val actualDelta = if (lastPos != null) {
+            (position - lastPos).toInt()
+        } else {
+            delta  // First message, use reported delta
+        }
+        lastEncoderPositionActedOn = position
+        
+        if (actualDelta == 0) return
+        
         // Convert encoder clicks to jog distance
-        val direction = if (delta > 0) 1 else -1
-        val absClicks = kotlin.math.abs(delta)
+        val direction = if (actualDelta > 0) 1 else -1
+        val absClicks = kotlin.math.abs(actualDelta)
         val distance = currentStep * absClicks * direction
         
         playClick()
@@ -1718,6 +2034,9 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         scanJob?.cancel()
+        // Cancel any pending background disconnect
+        backgroundDisconnectRunnable?.let { jogHandler.removeCallbacks(it) }
+        backgroundDisconnectRunnable = null
         webSocketManager.disconnect()
         usbEncoderManager?.release()
         usbEncoderManager = null
@@ -1869,7 +2188,7 @@ class MainActivity : AppCompatActivity() {
             "Unknown"
         }
         
-        AlertDialog.Builder(this)
+        AlertDialog.Builder(this, R.style.DarkAlertDialog)
             .setTitle("About ncSender Control")
             .setMessage("Version: $version\n\nA mobile pendant for CNC control via ncSender.")
             .setPositiveButton("OK", null)
@@ -1888,27 +2207,501 @@ class MainActivity : AppCompatActivity() {
     private fun showSettingsDialog() {
         val dialogView = layoutInflater.inflate(R.layout.dialog_settings, null)
         val dialPointsSpinner = dialogView.findViewById<Spinner>(R.id.dialPointsSpinner)
+        val boardTypeSpinner = dialogView.findViewById<Spinner>(R.id.boardTypeSpinner)
+        val boardPinCountLabel = dialogView.findViewById<TextView>(R.id.boardPinCountLabel)
+        val numButtonsSpinner = dialogView.findViewById<Spinner>(R.id.numButtonsSpinner)
+        val configureButtonsBtn = dialogView.findViewById<Button>(R.id.configureButtonsBtn)
+        val firmwareInfoLabel = dialogView.findViewById<TextView>(R.id.firmwareInfoLabel)
+        val flashFirmwareBtn = dialogView.findViewById<Button>(R.id.flashFirmwareBtn)
 
         // Set up dial points options
         val dialPointsOptions = arrayOf("50 points", "100 points")
-        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, dialPointsOptions)
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        dialPointsSpinner.adapter = adapter
+        val dialAdapter = ArrayAdapter(this, R.layout.spinner_item_dark, dialPointsOptions)
+        dialAdapter.setDropDownViewResource(R.layout.spinner_dropdown_dark)
+        dialPointsSpinner.adapter = dialAdapter
 
-        // Set current selection
+        // Set current dial points selection
         val currentPoints = loadDialPoints()
         dialPointsSpinner.setSelection(if (currentPoints == 100) 1 else 0)
 
-        AlertDialog.Builder(this)
+        // Set up board type options
+        val boardOptions = BoardType.getDisplayNames().toTypedArray()
+        val boardAdapter = ArrayAdapter(this, R.layout.spinner_item_dark, boardOptions)
+        boardAdapter.setDropDownViewResource(R.layout.spinner_dropdown_dark)
+        boardTypeSpinner.adapter = boardAdapter
+
+        // Set current board type selection
+        val currentBoardType = ButtonConfigManager.loadBoardType(this)
+        boardTypeSpinner.setSelection(currentBoardType.ordinal)
+        boardPinCountLabel.text = "${currentBoardType.availablePins.size} GPIO pins available"
+        firmwareInfoLabel.text = "Firmware: ${getFirmwareFilename(currentBoardType)}"
+
+        // Update pin count label and firmware info when board changes
+        boardTypeSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                val boardType = BoardType.entries[position]
+                boardPinCountLabel.text = "${boardType.availablePins.size} GPIO pins available"
+                firmwareInfoLabel.text = "Firmware: ${getFirmwareFilename(boardType)}"
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+        
+        // Flash firmware button click
+        flashFirmwareBtn.setOnClickListener {
+            val selectedBoardType = BoardType.entries[boardTypeSpinner.selectedItemPosition]
+            startFirmwareFlash(selectedBoardType)
+        }
+
+        // Set up number of buttons options (0-12)
+        val buttonOptions = (0..12).map { if (it == 0) "None" else it.toString() }.toTypedArray()
+        val buttonAdapter = ArrayAdapter(this, R.layout.spinner_item_dark, buttonOptions)
+        buttonAdapter.setDropDownViewResource(R.layout.spinner_dropdown_dark)
+        numButtonsSpinner.adapter = buttonAdapter
+
+        // Set current button count selection
+        val currentNumButtons = ButtonConfigManager.loadNumButtons(this)
+        numButtonsSpinner.setSelection(currentNumButtons)
+
+        // Update configure button visibility based on selection
+        configureButtonsBtn.isEnabled = currentNumButtons > 0
+        numButtonsSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                configureButtonsBtn.isEnabled = position > 0
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+
+        // Configure buttons button click
+        configureButtonsBtn.setOnClickListener {
+            val numButtons = numButtonsSpinner.selectedItemPosition
+            if (numButtons > 0) {
+                // Save board type first so the button config dialog uses correct pins
+                val selectedBoardType = BoardType.entries[boardTypeSpinner.selectedItemPosition]
+                ButtonConfigManager.saveBoardType(this, selectedBoardType)
+                showButtonConfigDialog(numButtons)
+            }
+        }
+
+        AlertDialog.Builder(this, R.style.DarkAlertDialog)
             .setTitle("Settings")
             .setView(dialogView)
             .setPositiveButton("Save") { _, _ ->
                 val selectedPoints = if (dialPointsSpinner.selectedItemPosition == 1) 100 else 50
                 saveDialPoints(selectedPoints)
                 binding.jogDial.setNumTicks(selectedPoints)
+
+                // Save board type
+                val selectedBoardType = BoardType.entries[boardTypeSpinner.selectedItemPosition]
+                ButtonConfigManager.saveBoardType(this, selectedBoardType)
+
+                // Save button count
+                val numButtons = numButtonsSpinner.selectedItemPosition
+                ButtonConfigManager.saveNumButtons(this, numButtons)
+
+                // Send button config to encoder device
+                sendButtonConfigToEncoder()
             }
             .setNegativeButton("Cancel", null)
             .show()
+    }
+    
+    // --- Firmware Flashing ---
+    
+    private fun getFirmwareFilename(boardType: BoardType): String {
+        return when (boardType) {
+            BoardType.RP2040_ZERO -> "encoder_rp2040zero.uf2"
+            BoardType.PICO -> "encoder_pico.uf2"
+            BoardType.TINY2040 -> "encoder_tiny2040.uf2"
+        }
+    }
+    
+    private fun startFirmwareFlash(boardType: BoardType) {
+        pendingFirmwareBoardType = boardType
+        val filename = getFirmwareFilename(boardType)
+        
+        // First check if RP2040 is connected in BOOTSEL mode
+        val rp2040Device = usbMassStorageManager.findRp2040BootselDevice()
+        
+        if (rp2040Device != null) {
+            // Device found - try direct USB flash
+            flashFirmwareViaMassStorage(boardType)
+        } else {
+            // No device found - show instructions and offer to save to Downloads
+            showBootselInstructions(boardType)
+        }
+    }
+    
+    private fun flashFirmwareViaMassStorage(boardType: BoardType) {
+        val filename = getFirmwareFilename(boardType)
+        val assetFilename = "firmware/$filename"
+        
+        // Show progress dialog
+        val progressDialog = AlertDialog.Builder(this, R.style.DarkAlertDialog)
+            .setTitle("Flashing Firmware")
+            .setMessage("Writing ${boardType.displayName} firmware...\nDo not disconnect the device.")
+            .setCancelable(false)
+            .create()
+        progressDialog.show()
+        
+        lifecycleScope.launch {
+            try {
+                val inputStream = assets.open(assetFilename)
+                val result = usbMassStorageManager.flashFirmware(inputStream, filename)
+                inputStream.close()
+                
+                progressDialog.dismiss()
+                
+                when (result) {
+                    is UsbMassStorageManager.FlashResult.Success -> {
+                        AlertDialog.Builder(this@MainActivity, R.style.DarkAlertDialog)
+                            .setTitle("Firmware Flashed!")
+                            .setMessage(
+                                "Successfully wrote firmware to ${boardType.displayName}.\n\n" +
+                                "The device will reboot automatically and be ready to use."
+                            )
+                            .setPositiveButton("OK", null)
+                            .show()
+                    }
+                    is UsbMassStorageManager.FlashResult.NoDeviceFound -> {
+                        showBootselInstructions(boardType)
+                    }
+                    is UsbMassStorageManager.FlashResult.PermissionDenied -> {
+                        AlertDialog.Builder(this@MainActivity, R.style.DarkAlertDialog)
+                            .setTitle("Permission Denied")
+                            .setMessage(
+                                "USB permission was denied.\n\n" +
+                                "Please try again and tap 'Allow' when prompted for USB access.\n\n" +
+                                "If the permission dialog doesn't appear, unplug and replug the device while in BOOTSEL mode."
+                            )
+                            .setPositiveButton("Try Again") { _, _ -> flashFirmwareViaMassStorage(boardType) }
+                            .setNeutralButton("Save to Downloads") { _, _ -> saveFirmwareToDownloads(boardType) }
+                            .setNegativeButton("Cancel", null)
+                            .show()
+                    }
+                    is UsbMassStorageManager.FlashResult.Error -> {
+                        AlertDialog.Builder(this@MainActivity, R.style.DarkAlertDialog)
+                            .setTitle("Flash Failed")
+                            .setMessage(
+                                "Failed to write firmware: ${result.message}\n\n" +
+                                "Make sure your ${boardType.displayName} is in BOOTSEL mode:\n" +
+                                "1. Unplug the USB cable\n" +
+                                "2. Hold the BOOTSEL button\n" +
+                                "3. While holding, plug in the USB cable\n" +
+                                "4. Release BOOTSEL - device should appear as 'RPI-RP2'\n" +
+                                "5. Tap 'Try Again'"
+                            )
+                            .setPositiveButton("Try Again") { _, _ -> flashFirmwareViaMassStorage(boardType) }
+                            .setNeutralButton("Save to Downloads") { _, _ -> saveFirmwareToDownloads(boardType) }
+                            .setNegativeButton("Cancel", null)
+                            .show()
+                    }
+                }
+            } catch (e: Exception) {
+                progressDialog.dismiss()
+                Log.e(TAG, "Firmware flash failed", e)
+                AlertDialog.Builder(this@MainActivity, R.style.DarkAlertDialog)
+                    .setTitle("Flash Failed")
+                    .setMessage(
+                        "Error: ${e.message}\n\n" +
+                        "Make sure your ${boardType.displayName} is in BOOTSEL mode:\n" +
+                        "1. Unplug the USB cable\n" +
+                        "2. Hold the BOOTSEL button\n" +
+                        "3. While holding, plug in the USB cable\n" +
+                        "4. Release BOOTSEL - device should appear as 'RPI-RP2'\n" +
+                        "5. Tap 'Try Again'"
+                    )
+                    .setPositiveButton("Try Again") { _, _ -> flashFirmwareViaMassStorage(boardType) }
+                    .setNeutralButton("Save to Downloads") { _, _ -> saveFirmwareToDownloads(boardType) }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+            }
+        }
+    }
+    
+    private fun showBootselInstructions(boardType: BoardType) {
+        AlertDialog.Builder(this, R.style.DarkAlertDialog)
+            .setTitle("BOOTSEL Mode Required")
+            .setMessage(
+                "To flash firmware, the ${boardType.displayName} must be in BOOTSEL mode:\n\n" +
+                "1. UNPLUG the USB cable from your phone\n" +
+                "2. Find the BOOTSEL button on your board\n" +
+                "3. HOLD the BOOTSEL button down\n" +
+                "4. While HOLDING, plug the USB cable into your phone\n" +
+                "5. RELEASE the BOOTSEL button\n" +
+                "6. Tap 'Flash Now' below\n\n" +
+                "The device will appear as 'RPI-RP2' storage when ready."
+            )
+            .setPositiveButton("Flash Now") { _, _ -> flashFirmwareViaMassStorage(boardType) }
+            .setNeutralButton("Save to Downloads") { _, _ -> saveFirmwareToDownloads(boardType) }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+    
+    private fun saveFirmwareToDownloads(boardType: BoardType) {
+        val filename = getFirmwareFilename(boardType)
+        val assetFilename = "firmware/$filename"
+        
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                // Read firmware from assets
+                val inputStream = assets.open(assetFilename)
+                val firmwareBytes = inputStream.readBytes()
+                inputStream.close()
+                
+                // Save to Downloads folder
+                val downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(
+                    android.os.Environment.DIRECTORY_DOWNLOADS
+                )
+                val firmwareFile = java.io.File(downloadsDir, filename)
+                firmwareFile.writeBytes(firmwareBytes)
+                
+                withContext(Dispatchers.Main) {
+                    // Show success dialog with instructions
+                    AlertDialog.Builder(this@MainActivity, R.style.DarkAlertDialog)
+                        .setTitle("Firmware Saved")
+                        .setMessage(
+                            "Firmware saved to Downloads/$filename\n\n" +
+                            "To flash manually:\n" +
+                            "1. Hold BOOTSEL on ${boardType.displayName}\n" +
+                            "2. Connect USB cable, then release BOOTSEL\n" +
+                            "3. Open a file manager app\n" +
+                            "4. Copy '$filename' from Downloads to the RPI-RP2 drive\n" +
+                            "5. The board will reboot automatically\n\n" +
+                            "Note: If Android asks to format RPI-RP2, tap Cancel - use a file manager app instead."
+                        )
+                        .setPositiveButton("OK", null)
+                        .show()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to save firmware", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Failed to save firmware: ${e.message}",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+    }
+    
+    private fun writeFirmwareToUri(uri: Uri) {
+        val boardType = pendingFirmwareBoardType ?: return
+        val assetFilename = "firmware/${getFirmwareFilename(boardType)}"
+        
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                // Read firmware from assets
+                val inputStream = assets.open(assetFilename)
+                val firmwareBytes = inputStream.readBytes()
+                inputStream.close()
+                
+                // Write to selected location
+                contentResolver.openOutputStream(uri)?.use { outputStream ->
+                    outputStream.write(firmwareBytes)
+                }
+                
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Firmware written! The ${boardType.displayName} will reboot automatically.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to write firmware", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Failed to write firmware: ${e.message}",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+        
+        pendingFirmwareBoardType = null
+    }
+
+    private fun showButtonConfigDialog(numButtons: Int) {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_button_config, null)
+        val container = dialogView.findViewById<WidgetLinearLayout>(R.id.buttonsContainer)
+
+        // Load existing configs
+        val existingConfigs = ButtonConfigManager.loadButtonConfigs(this).associateBy { it.index }
+
+        // Available GPIO pins for selected board (with analog labels for Tiny2040)
+        val availablePins = ButtonConfigManager.getAvailablePins(this)
+        val pinDisplayNames = ButtonConfigManager.getPinDisplayNames(this)
+        val pinOptions = listOf("--") + pinDisplayNames
+        val allFunctions = ButtonFunction.entries.toList()
+
+        // Track selections for each button
+        data class ButtonSelection(
+            val pin: Spinner,
+            var idleFunction: ButtonFunction,
+            var runningFunction: ButtonFunction,
+            var secondaryFunction: ButtonFunction,
+            val idlePicker: TextView,
+            val runningPicker: TextView,
+            val secondaryPicker: TextView
+        )
+        val buttonSelections = mutableListOf<ButtonSelection>()
+
+        // Create config row for each button
+        for (i in 0 until numButtons) {
+            val itemView = layoutInflater.inflate(R.layout.item_button_config, container, false)
+            
+            val label = itemView.findViewById<TextView>(R.id.buttonLabel)
+            val pinSpinner = itemView.findViewById<Spinner>(R.id.pinSpinner)
+            val idlePicker = itemView.findViewById<TextView>(R.id.idleFunctionPicker)
+            val runningPicker = itemView.findViewById<TextView>(R.id.runningFunctionPicker)
+            val secondaryPicker = itemView.findViewById<TextView>(R.id.secondaryFunctionPicker)
+
+            label.text = "Button ${i + 1}"
+
+            // Pin spinner with analog labels
+            val pinAdapter = ArrayAdapter(this, R.layout.spinner_item_dark, pinOptions)
+            pinAdapter.setDropDownViewResource(R.layout.spinner_dropdown_dark)
+            pinSpinner.adapter = pinAdapter
+
+            // Initialize with existing or default values
+            var currentIdleFunction = ButtonFunction.NONE
+            var currentRunningFunction = ButtonFunction.NONE
+            var currentSecondaryFunction = ButtonFunction.NONE
+            
+            existingConfigs[i]?.let { config ->
+                val pinIndex = availablePins.indexOf(config.gpioPin)
+                if (pinIndex >= 0) pinSpinner.setSelection(pinIndex + 1) // +1 for "--" option
+                currentIdleFunction = config.idleFunction
+                currentRunningFunction = config.runningFunction
+                currentSecondaryFunction = config.secondaryFunction
+            }
+            
+            idlePicker.text = currentIdleFunction.displayName
+            runningPicker.text = currentRunningFunction.displayName
+            secondaryPicker.text = currentSecondaryFunction.displayName
+
+            val selection = ButtonSelection(
+                pinSpinner, 
+                currentIdleFunction, 
+                currentRunningFunction,
+                currentSecondaryFunction,
+                idlePicker,
+                runningPicker,
+                secondaryPicker
+            )
+            buttonSelections.add(selection)
+
+            // Click listener for idle function picker
+            idlePicker.setOnClickListener {
+                showFunctionPickerDialog("Select Idle Function", allFunctions, selection.idleFunction) { chosen ->
+                    selection.idleFunction = chosen
+                    idlePicker.text = chosen.displayName
+                }
+            }
+
+            // Click listener for running function picker
+            runningPicker.setOnClickListener {
+                showFunctionPickerDialog("Select Running Function", allFunctions, selection.runningFunction) { chosen ->
+                    selection.runningFunction = chosen
+                    runningPicker.text = chosen.displayName
+                }
+            }
+
+            // Click listener for secondary (Fn+) function picker
+            secondaryPicker.setOnClickListener {
+                showFunctionPickerDialog("Select Fn+ Function", allFunctions, selection.secondaryFunction) { chosen ->
+                    selection.secondaryFunction = chosen
+                    secondaryPicker.text = chosen.displayName
+                }
+            }
+
+            container.addView(itemView)
+        }
+
+        AlertDialog.Builder(this, R.style.DarkAlertDialog)
+            .setTitle("Configure Buttons")
+            .setView(dialogView)
+            .setPositiveButton("Save") { _, _ ->
+                // Collect configs
+                val configs = buttonSelections.mapIndexedNotNull { index, selection ->
+                    val pinIndex = selection.pin.selectedItemPosition
+                    val pin = if (pinIndex > 0) {
+                        availablePins[pinIndex - 1]
+                    } else {
+                        availablePins.getOrElse(index) { 2 }
+                    }
+                    ButtonConfig(index, pin, selection.idleFunction, selection.runningFunction, selection.secondaryFunction)
+                }
+                ButtonConfigManager.saveButtonConfigs(this, configs)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+    
+    private fun showFunctionPickerDialog(
+        title: String,
+        functions: List<ButtonFunction>,
+        currentSelection: ButtonFunction,
+        onSelected: (ButtonFunction) -> Unit
+    ) {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_function_picker, null)
+        val searchInput = dialogView.findViewById<android.widget.EditText>(R.id.searchInput)
+        val listView = dialogView.findViewById<android.widget.ListView>(R.id.functionList)
+        
+        // Create a filterable list
+        val displayNames = functions.map { it.displayName }
+        val adapter = ArrayAdapter(this, R.layout.spinner_dropdown_dark, displayNames.toMutableList())
+        listView.adapter = adapter
+        
+        // Scroll to current selection
+        val currentIndex = functions.indexOf(currentSelection)
+        if (currentIndex >= 0) {
+            listView.post { listView.setSelection(currentIndex) }
+        }
+        
+        val dialog = AlertDialog.Builder(this, R.style.DarkAlertDialog)
+            .setTitle(title)
+            .setView(dialogView)
+            .setNegativeButton("Cancel", null)
+            .create()
+        
+        // Filter as user types
+        searchInput.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) {
+                val query = s?.toString()?.lowercase() ?: ""
+                adapter.clear()
+                val filtered = if (query.isEmpty()) {
+                    displayNames
+                } else {
+                    displayNames.filter { it.lowercase().contains(query) }
+                }
+                adapter.addAll(filtered)
+                adapter.notifyDataSetChanged()
+            }
+        })
+        
+        // Select item on click
+        listView.setOnItemClickListener { _, _, position, _ ->
+            val selectedName = adapter.getItem(position) ?: return@setOnItemClickListener
+            val selectedFunction = functions.find { it.displayName == selectedName } ?: return@setOnItemClickListener
+            onSelected(selectedFunction)
+            dialog.dismiss()
+        }
+        
+        dialog.show()
+    }
+
+    private fun sendButtonConfigToEncoder() {
+        val pins = ButtonConfigManager.getConfiguredPins(this)
+        if (pins.isNotEmpty()) {
+            usbEncoderManager?.sendButtonConfig(pins)
+        } else {
+            usbEncoderManager?.clearButtonConfig()
+        }
     }
 
     // --- Network Scanning ---

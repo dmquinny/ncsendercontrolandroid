@@ -6,8 +6,13 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     
-    <!-- USB permissions for encoder -->
+    <!-- Storage permission for saving firmware to Downloads (only needed for older Android) -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" 
+        android:maxSdkVersion="28" />
+    
+    <!-- USB permissions for encoder and mass storage -->
     <uses-feature android:name="android.hardware.usb.host" android:required="false" />
+    <uses-permission android:name="android.permission.USB_PERMISSION" />
 
     <application
         android:allowBackup="true"
@@ -17,11 +22,13 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.CNCPendant"
         android:networkSecurityConfig="@xml/network_security_config"
-        android:usesCleartextTraffic="true">
+        android:usesCleartextTraffic="true"
+        android:extractNativeLibs="true">
         
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:screenOrientation="portrait"
             android:theme="@style/Theme.CNCPendant">
             <intent-filter>

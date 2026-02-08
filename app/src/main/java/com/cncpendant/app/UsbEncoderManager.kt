@@ -58,6 +58,8 @@ class UsbEncoderManager(private val context: Context) : SerialInputOutputManager
         fun onEncoderDisconnected()
         fun onEncoderRotation(delta: Int, position: Long)
         fun onEncoderError(error: String)
+        fun onButtonPressed(pin: Int)
+        fun onButtonReleased(pin: Int)
     }
 
     private var listener: EncoderListener? = null
@@ -352,6 +354,27 @@ class UsbEncoderManager(private val context: Context) : SerialInputOutputManager
         })
     }
 
+    /**
+     * Send button pin configuration to the encoder device
+     */
+    fun sendButtonConfig(pins: List<Int>) {
+        Log.d(TAG, "Sending button config: $pins")
+        sendCommand(JSONObject().apply {
+            put("type", "buttons")
+            put("pins", org.json.JSONArray(pins))
+        })
+    }
+
+    /**
+     * Clear all button configurations on the encoder device
+     */
+    fun clearButtonConfig() {
+        Log.d(TAG, "Clearing button config")
+        sendCommand(JSONObject().apply {
+            put("type", "clear_buttons")
+        })
+    }
+
     // SerialInputOutputManager.Listener implementation
     override fun onNewData(data: ByteArray) {
         // Append to buffer and process complete lines
@@ -394,11 +417,34 @@ class UsbEncoderManager(private val context: Context) : SerialInputOutputManager
                         }
                     }
                 }
+                "button" -> {
+                    val pin = json.optInt("pin", -1)
+                    val state = json.optString("state", "")
+                    
+                    if (pin >= 0) {
+                        mainHandler.post {
+                            when (state) {
+                                "pressed" -> listener?.onButtonPressed(pin)
+                                "released" -> listener?.onButtonReleased(pin)
+                            }
+                        }
+                    }
+                }
+                "buttons_configured" -> {
+                    val count = json.optInt("count", 0)
+                    Log.d(TAG, "Buttons configured: $count")
+                }
+                "buttons_cleared" -> {
+                    Log.d(TAG, "Buttons cleared")
+                }
                 "pong" -> {
                     Log.d(TAG, "Received pong, position: ${json.optLong("position")}")
                 }
                 "ready" -> {
-                    Log.d(TAG, "Encoder device ready: ${json.optString("message")}")
+                    Log.d(TAG, "Encoder device ready: ${json.optString("device")}")
+                }
+                "heartbeat" -> {
+                    // Heartbeat received, device is alive
                 }
             }
         } catch (e: Exception) {
