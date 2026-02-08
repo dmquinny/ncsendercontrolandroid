@@ -125,7 +125,11 @@ class UsbMassStorageManager(private val context: Context) {
         } else {
             0
         }
-        val permissionIntent = PendingIntent.getBroadcast(context, 0, Intent(ACTION_USB_PERMISSION), flags)
+        // Make the intent explicit by setting the package (required for Android 14+)
+        val intent = Intent(ACTION_USB_PERMISSION).apply {
+            setPackage(context.packageName)
+        }
+        val permissionIntent = PendingIntent.getBroadcast(context, 0, intent, flags)
         usbManager.requestPermission(device, permissionIntent)
         
         continuation.invokeOnCancellation {

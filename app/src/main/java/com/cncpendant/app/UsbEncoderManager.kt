@@ -230,8 +230,12 @@ class UsbEncoderManager(private val context: Context) : SerialInputOutputManager
             } else {
                 0
             }
+            // Make the intent explicit by setting the package (required for Android 14+)
+            val intent = Intent(ACTION_USB_PERMISSION).apply {
+                setPackage(context.packageName)
+            }
             val permissionIntent = PendingIntent.getBroadcast(
-                context, 0, Intent(ACTION_USB_PERMISSION), flags
+                context, 0, intent, flags
             )
             manager.requestPermission(device, permissionIntent)
         }
