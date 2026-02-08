@@ -76,6 +76,7 @@ class MainActivity : AppCompatActivity() {
     private val ENCODER_CONTINUOUS_THRESHOLD = 6  // ticks in same direction to trigger continuous
     private val ENCODER_TICK_TIMEOUT_MS = 500L    // max gap between ticks before stopping continuous jog
     private var encoderIdleRunnable: Runnable? = null
+    private var roundToWholeRunnable: Runnable? = null
     
     // FN modifier button state
     private var isFnHeld = false
@@ -2008,6 +2009,10 @@ class MainActivity : AppCompatActivity() {
             return
         }
         
+        // Cancel any pending round-to-whole from previous jog - new movement takes priority
+        roundToWholeRunnable?.let { jogHandler.removeCallbacks(it) }
+        roundToWholeRunnable = null
+        
         val now = System.currentTimeMillis()
         val direction = if (delta > 0) 1 else -1
         val absClicks = kotlin.math.abs(delta)
@@ -2044,8 +2049,11 @@ class MainActivity : AppCompatActivity() {
             return
         }
         
-        // Check if we should start continuous jog
-        if (encoderTickCount >= ENCODER_CONTINUOUS_THRESHOLD) {
+        // Check if we should start continuous jog (only for step sizes >= 10mm)
+        if (encoderTickCount >= ENCODER_CONTINUOUS_THRESHOLD && currentStep >= 10f) {
+            // Cancel any pending round-to-whole from previous jog
+            roundToWholeRunnable?.let { jogHandler.removeCallbacks(it) }
+            roundToWholeRunnable = null
             // Start continuous jog
             encoderContinuousJogging = true
             startContinuousJog(selectedAxis, direction)
@@ -2073,12 +2081,19 @@ class MainActivity : AppCompatActivity() {
         encoderContinuousJogging = false
         stopContinuousJog()
         
-        // After machine stops, send a small jog to round to whole number (only for step sizes > 1mm)
-        if (axis.isNotEmpty() && stepSize > 1f) {
+        // After machine stops, send a small jog to round to whole number (only for step sizes >= 10mm)
+        if (axis.isNotEmpty() && stepSize >= 10f) {
+            // Cancel any previous pending round-to-whole
+            roundToWholeRunnable?.let { jogHandler.removeCallbacks(it) }
             // Wait for machine to fully stop and position to update (600ms)
-            jogHandler.postDelayed({
-                roundPositionToWholeNumber(axis)
-            }, 600)
+            roundToWholeRunnable = Runnable {
+                // Only round if we're not currently jogging
+                if (!encoderContinuousJogging && activeJogId == null) {
+                    roundPositionToWholeNumber(axis)
+                }
+                roundToWholeRunnable = null
+            }
+            jogHandler.postDelayed(roundToWholeRunnable!!, 600)
         }
     }
     
@@ -2113,6 +2128,9 @@ class MainActivity : AppCompatActivity() {
         // Cancel any pending encoder idle timeout
         encoderIdleRunnable?.let { jogHandler.removeCallbacks(it) }
         encoderIdleRunnable = null
+        // Cancel any pending round-to-whole
+        roundToWholeRunnable?.let { jogHandler.removeCallbacks(it) }
+        roundToWholeRunnable = null
         webSocketManager.disconnect()
         usbEncoderManager?.release()
         usbEncoderManager = null
