@@ -67,7 +67,6 @@ class MainActivity : AppCompatActivity() {
     private val usbMassStorageManager by lazy { UsbMassStorageManager(this) }
     private var lastEncoderJogSentAt = 0L
     private val ENCODER_MIN_SEND_INTERVAL_MS = 100L
-    private var lastEncoderPositionActedOn: Long? = null  // Track position to catch up on dropped messages
     
     // FN modifier button state
     private var isFnHeld = false
@@ -1725,7 +1724,6 @@ class MainActivity : AppCompatActivity() {
             setEncoderListener(object : UsbEncoderManager.EncoderListener {
                 override fun onEncoderConnected() {
                     encoderConnected = true
-                    lastEncoderPositionActedOn = null  // Reset for fresh start
                     Log.d(TAG, "USB Encoder connected")
                     Toast.makeText(this@MainActivity, "USB Encoder connected", Toast.LENGTH_SHORT).show()
                     
@@ -1735,7 +1733,6 @@ class MainActivity : AppCompatActivity() {
                 
                 override fun onEncoderDisconnected() {
                     encoderConnected = false
-                    lastEncoderPositionActedOn = null  // Clear stale position
                     Log.d(TAG, "USB Encoder disconnected")
                     Toast.makeText(this@MainActivity, "USB Encoder disconnected", Toast.LENGTH_SHORT).show()
                 }
@@ -1994,13 +1991,11 @@ class MainActivity : AppCompatActivity() {
         if (delta == 0) return
         
         // Sync the on-screen dial to the encoder's absolute position
-        // This keeps dial in sync even if some events are dropped when moving fast
+        // This prevents visual drift from floating-point accumulation errors
         binding.jogDial.syncToEncoderPosition(position)
         
         // Only send jog commands if connected and axis selected
         if (!isConnected || jogDisabled() || selectedAxis.isEmpty()) {
-            // Even when not jogging, track position so we don't "catch up" later
-            lastEncoderPositionActedOn = position
             return
         }
         
@@ -2011,20 +2006,9 @@ class MainActivity : AppCompatActivity() {
         
         lastEncoderJogSentAt = now
         
-        // Calculate movement from position difference to catch up on any dropped messages
-        val lastPos = lastEncoderPositionActedOn
-        val actualDelta = if (lastPos != null) {
-            (position - lastPos).toInt()
-        } else {
-            delta  // First message, use reported delta
-        }
-        lastEncoderPositionActedOn = position
-        
-        if (actualDelta == 0) return
-        
-        // Convert encoder clicks to jog distance
-        val direction = if (actualDelta > 0) 1 else -1
-        val absClicks = kotlin.math.abs(actualDelta)
+        // Convert encoder clicks to jog distance (use reported delta for smooth movement)
+        val direction = if (delta > 0) 1 else -1
+        val absClicks = kotlin.math.abs(delta)
         val distance = currentStep * absClicks * direction
         
         playClick()
