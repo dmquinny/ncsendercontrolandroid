@@ -30,6 +30,10 @@ class WebSocketManager(private val context: Context) {
     private var lastFeedRate = 0f
     private var lastSpindleRpmActual = 0f
     private var lastSpindleRpmTarget = 0f
+    
+    // Preserve last known homing state (don't reset to false if field missing in update)
+    private var lastHomed = false
+    private var lastHomingCycle = 0
 
     interface ConnectionListener {
         fun onConnected()
@@ -86,6 +90,9 @@ class WebSocketManager(private val context: Context) {
     fun disconnect() {
         webSocket?.close(1000, "User disconnected")
         webSocket = null
+        // Reset homing state on disconnect (machine state unknown)
+        lastHomed = false
+        lastHomingCycle = 0
     }
 
     fun sendCommand(command: String) {
@@ -431,11 +438,19 @@ class WebSocketManager(private val context: Context) {
                             listener?.onSenderConnectedChanged(connected)
                         }
 
-                        // Parse homing state (only when fields are present to avoid partial updates resetting values)
-                        if (machineState.has("homed") || machineState.has("homingCycle")) {
-                            val homed = machineState.get("homed")?.asBoolean ?: false
-                            val homingCycle = machineState.get("homingCycle")?.asInt ?: 0
-                            listener?.onHomingStateChanged(homed, homingCycle)
+                        // Parse homing state - only update each field when explicitly present
+                        // (preserve last known values to avoid false resets)
+                        var homingStateChanged = false
+                        if (machineState.has("homed") && !machineState.get("homed").isJsonNull) {
+                            lastHomed = machineState.get("homed").asBoolean
+                            homingStateChanged = true
+                        }
+                        if (machineState.has("homingCycle") && !machineState.get("homingCycle").isJsonNull) {
+                            lastHomingCycle = machineState.get("homingCycle").asInt
+                            homingStateChanged = true
+                        }
+                        if (homingStateChanged) {
+                            listener?.onHomingStateChanged(lastHomed, lastHomingCycle)
                         }
 
                         // Parse alarm code and description (sent by ncSender when in alarm state)

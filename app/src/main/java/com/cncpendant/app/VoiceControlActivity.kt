@@ -32,9 +32,11 @@ import com.cncpendant.app.voice.VoiceCommand
 import com.cncpendant.app.voice.VoiceCommandExecutor
 import com.cncpendant.app.voice.VoiceCommandParser
 import com.cncpendant.app.voice.VoiceEvent
+import com.cncpendant.app.voice.VoiceProcessor
 import com.cncpendant.app.voice.VoiceState
 import com.cncpendant.app.voice.VoiceStateMachine
 import com.google.gson.JsonObject
+import kotlinx.coroutines.*
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -107,11 +109,19 @@ class VoiceControlActivity : AppCompatActivity(), ConnectionManager.ConnectionSt
     private val handler = Handler(Looper.getMainLooper())
     private var pulseAnimator: ObjectAnimator? = null
     
+    // Coroutine scope for async operations
+    private val activityScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    
     // Refactored components
     private lateinit var parserConfig: ParserConfig
     private lateinit var commandParser: VoiceCommandParser
     private lateinit var commandExecutor: VoiceCommandExecutor
     private val stateMachine = VoiceStateMachine()
+    
+    // On-device voice processing (Whisper + DeepFilterNet)
+    private var voiceProcessor: VoiceProcessor? = null
+    private var useOnDeviceProcessing = false  // Use Whisper instead of Android STT
+    private var useNoiseReduction = true       // Use DeepFilterNet when available
 
     companion object {
         private const val TAG = "VoiceControl"
@@ -124,6 +134,8 @@ class VoiceControlActivity : AppCompatActivity(), ConnectionManager.ConnectionSt
         private const val PREF_WAKE_WORD_ENABLED = "voice_wake_word_enabled"
         private const val PREF_WAKE_WORD = "voice_wake_word"
         private const val PREF_REQUIRE_CONFIRMATION = "voice_require_confirmation"
+        private const val PREF_USE_ON_DEVICE = "voice_use_on_device"
+        private const val PREF_USE_NOISE_REDUCTION = "voice_use_noise_reduction"
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -146,6 +158,12 @@ class VoiceControlActivity : AppCompatActivity(), ConnectionManager.ConnectionSt
 
         loadSettings()
         initializeRefactoredComponents()
+        
+        // Initialize VoiceProcessor if on-device processing is enabled
+        if (useOnDeviceProcessing) {
+            initializeVoiceProcessor()
+        }
+        
         setupUI()
         checkPermissionAndSetup()
         
@@ -168,7 +186,9 @@ class VoiceControlActivity : AppCompatActivity(), ConnectionManager.ConnectionSt
 
     override fun onDestroy() {
         super.onDestroy()
+        activityScope.cancel()  // Cancel coroutines
         stopListening()
+        voiceProcessor?.release()
         speechRecognizer?.destroy()
         textToSpeech?.stop()
         textToSpeech?.shutdown()
@@ -349,6 +369,8 @@ class VoiceControlActivity : AppCompatActivity(), ConnectionManager.ConnectionSt
         requireConfirmation = prefs.getBoolean(PREF_REQUIRE_CONFIRMATION, true)
         wakeWordEnabled = prefs.getBoolean(PREF_WAKE_WORD_ENABLED, true)
         wakeWord = prefs.getString(PREF_WAKE_WORD, "hey cnc")?.lowercase() ?: "hey cnc"
+        useOnDeviceProcessing = prefs.getBoolean(PREF_USE_ON_DEVICE, false)
+        useNoiseReduction = prefs.getBoolean(PREF_USE_NOISE_REDUCTION, true)
 
         // Load feed and step from main prefs
         val mainPrefs = getSharedPreferences("prefs", MODE_PRIVATE)
@@ -428,6 +450,111 @@ class VoiceControlActivity : AppCompatActivity(), ConnectionManager.ConnectionSt
             Log.d(TAG, "Voice state: ${oldState.description()} -> ${newState.description()}")
         }
     }
+    
+    /**
+     * Initialize the on-device VoiceProcessor (Whisper + DeepFilterNet)
+     */
+    private fun initializeVoiceProcessor() {
+        activityScope.launch {
+            binding.listeningStatus.text = "Initializing Whisper..."
+            
+            voiceProcessor = VoiceProcessor(this@VoiceControlActivity)
+            
+            // Set up callbacks
+            voiceProcessor?.onTranscriptionResult = { text ->
+                runOnUiThread {
+                    // Strip end trigger words before processing
+                    val cleanedText = stripEndTrigger(text)
+                    binding.recognizedText.text = "\"$cleanedText\""
+                    processCommand(cleanedText)
+                    
+                    // Restart if in continuous mode
+                    if (isContinuousMode && !isPushToTalk) {
+                        handler.postDelayed({ startListening() }, 500)
+                    } else {
+                        updateModeUI()
+                    }
+                }
+            }
+            
+            voiceProcessor?.onProcessingStarted = {
+                runOnUiThread {
+                    isListening = true
+                    binding.micButton.isSelected = true
+                    startPulseAnimation()
+                }
+            }
+            
+            voiceProcessor?.onProcessingComplete = {
+                runOnUiThread {
+                    isListening = false
+                    binding.micButton.isSelected = false
+                    stopPulseAnimation()
+                }
+            }
+            
+            voiceProcessor?.onSpeechDetected = {
+                runOnUiThread {
+                    binding.listeningStatus.text = "Listening..."
+                }
+            }
+            
+            voiceProcessor?.onSilenceDetected = {
+                runOnUiThread {
+                    binding.listeningStatus.text = "Processing..."
+                }
+            }
+            
+            voiceProcessor?.onStatusUpdate = { status ->
+                runOnUiThread {
+                    binding.listeningStatus.text = status
+                }
+            }
+            
+            voiceProcessor?.onError = { error ->
+                runOnUiThread {
+                    isListening = false
+                    binding.micButton.isSelected = false
+                    stopPulseAnimation()
+                    binding.listeningStatus.text = error
+                    
+                    // Restart if in continuous mode
+                    if (isContinuousMode && !isPushToTalk) {
+                        handler.postDelayed({ startListening() }, 1000)
+                    } else {
+                        updateModeUI()
+                    }
+                }
+            }
+            
+            // Initialize with settings
+            val success = voiceProcessor?.initialize(
+                useWhisper = true,
+                useDeepFilter = useNoiseReduction
+            ) ?: false
+            
+            if (success) {
+                Log.d(TAG, "VoiceProcessor initialized: ${voiceProcessor?.getModeDescription()}")
+                runOnUiThread {
+                    val mode = voiceProcessor?.getModeDescription() ?: "Unknown"
+                    Toast.makeText(this@VoiceControlActivity, "Ready: $mode", Toast.LENGTH_SHORT).show()
+                    updateModeUI()
+                }
+            } else {
+                Log.e(TAG, "VoiceProcessor initialization failed")
+                runOnUiThread {
+                    Toast.makeText(this@VoiceControlActivity, 
+                        "On-device processing unavailable. Using Android STT.", Toast.LENGTH_LONG).show()
+                    // Fall back to Android STT
+                    useOnDeviceProcessing = false
+                    voiceProcessor?.release()
+                    voiceProcessor = null
+                    saveSettings()
+                    updateModeUI()
+                }
+            }
+        }
+    }
 
     private fun saveSettings() {
         getSharedPreferences("voice_prefs", MODE_PRIVATE).edit()
@@ -437,6 +564,8 @@ class VoiceControlActivity : AppCompatActivity(), ConnectionManager.ConnectionSt
             .putBoolean(PREF_REQUIRE_CONFIRMATION, requireConfirmation)
             .putBoolean(PREF_WAKE_WORD_ENABLED, wakeWordEnabled)
             .putString(PREF_WAKE_WORD, wakeWord)
+            .putBoolean(PREF_USE_ON_DEVICE, useOnDeviceProcessing)
+            .putBoolean(PREF_USE_NOISE_REDUCTION, useNoiseReduction)
             .apply()
     }
 
@@ -782,6 +911,20 @@ class VoiceControlActivity : AppCompatActivity(), ConnectionManager.ConnectionSt
     }
 
     private fun startListening() {
+        // Use VoiceProcessor if on-device processing is enabled and available
+        if (useOnDeviceProcessing && voiceProcessor != null) {
+            if (voiceProcessor?.isWhisperAvailable() == true) {
+                val started = voiceProcessor?.startListening(activityScope) ?: false
+                if (started) {
+                    binding.listeningStatus.text = "Listening..."
+                } else {
+                    binding.listeningStatus.text = "Failed to start"
+                }
+                return
+            }
+        }
+        
+        // Fall back to Android SpeechRecognizer
         if (speechRecognizer == null) {
             setupSpeechRecognizer()
         }
@@ -810,6 +953,12 @@ class VoiceControlActivity : AppCompatActivity(), ConnectionManager.ConnectionSt
         isListening = false
         binding.micButton.isSelected = false
         stopPulseAnimation()
+        
+        // Stop VoiceProcessor if active
+        if (useOnDeviceProcessing && voiceProcessor != null) {
+            voiceProcessor?.stopListening()
+        }
+        
         speechRecognizer?.stopListening()
         updateModeUI()
     }
@@ -2282,9 +2431,81 @@ class VoiceControlActivity : AppCompatActivity(), ConnectionManager.ConnectionSt
             text = "Say this phrase to activate voice control.\nKeep it short (2-3 words) for best recognition."
             setTextColor(Color.parseColor("#7f8c8d"))
             textSize = 12f
-            setPadding(0, 8, 0, 0)
+            setPadding(0, 8, 0, 16)
         }
         dialogView.addView(wakeWordInfo)
+        
+        // On-Device Processing Section
+        val onDeviceLabel = TextView(this).apply {
+            text = "Speech Recognition Engine"
+            setTextColor(Color.parseColor("#7f8c8d"))
+            textSize = 12f
+        }
+        dialogView.addView(onDeviceLabel)
+        
+        val onDeviceLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(0, 8, 0, 0)
+        }
+        
+        val onDeviceTextLabel = TextView(this).apply {
+            text = "Use Whisper (On-Device)"
+            setTextColor(Color.WHITE)
+            textSize = 14f
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        onDeviceLayout.addView(onDeviceTextLabel)
+        
+        val onDeviceSwitch = android.widget.Switch(this).apply {
+            isChecked = useOnDeviceProcessing
+        }
+        onDeviceLayout.addView(onDeviceSwitch)
+        dialogView.addView(onDeviceLayout)
+        
+        val onDeviceInfo = TextView(this).apply {
+            text = "Uses Whisper AI for offline speech recognition.\nRequires downloading ~75MB model on first use."
+            setTextColor(Color.parseColor("#7f8c8d"))
+            textSize = 12f
+            setPadding(0, 4, 0, 8)
+        }
+        dialogView.addView(onDeviceInfo)
+        
+        // Noise Reduction Section (only shown when on-device is enabled)
+        val noiseLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            visibility = if (useOnDeviceProcessing) View.VISIBLE else View.GONE
+        }
+        
+        val noiseLabel = TextView(this).apply {
+            text = "DeepFilterNet Noise Reduction"
+            setTextColor(Color.WHITE)
+            textSize = 14f
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        noiseLayout.addView(noiseLabel)
+        
+        val noiseSwitch = android.widget.Switch(this).apply {
+            isChecked = useNoiseReduction
+        }
+        noiseLayout.addView(noiseSwitch)
+        dialogView.addView(noiseLayout)
+        
+        val noiseInfo = TextView(this).apply {
+            text = "Removes background noise (machine sounds, etc.)\nbefore transcription. Improves accuracy in shop."
+            setTextColor(Color.parseColor("#7f8c8d"))
+            textSize = 12f
+            setPadding(0, 4, 0, 0)
+            visibility = if (useOnDeviceProcessing) View.VISIBLE else View.GONE
+        }
+        dialogView.addView(noiseInfo)
+        
+        // Update noise section visibility when on-device toggle changes
+        onDeviceSwitch.setOnCheckedChangeListener { _, isChecked ->
+            noiseLayout.visibility = if (isChecked) View.VISIBLE else View.GONE
+            noiseInfo.visibility = if (isChecked) View.VISIBLE else View.GONE
+        }
 
         AlertDialog.Builder(this, R.style.DarkAlertDialog)
             .setTitle("Voice Control Settings")
@@ -2300,10 +2521,29 @@ class VoiceControlActivity : AppCompatActivity(), ConnectionManager.ConnectionSt
                     wakeWord = newWakeWord
                 }
                 
+                // Save on-device processing settings
+                val previousOnDevice = useOnDeviceProcessing
+                useOnDeviceProcessing = onDeviceSwitch.isChecked
+                useNoiseReduction = noiseSwitch.isChecked
+                
+                // Initialize or release VoiceProcessor if setting changed
+                if (useOnDeviceProcessing != previousOnDevice) {
+                    if (useOnDeviceProcessing) {
+                        initializeVoiceProcessor()
+                    } else {
+                        voiceProcessor?.release()
+                        voiceProcessor = null
+                    }
+                }
+                
+                // Update noise reduction setting if VoiceProcessor is active
+                voiceProcessor?.setDeepFilterEnabled(useNoiseReduction)
+                
                 saveSettings()
                 
                 val status = if (allowJobStartCommands) "enabled" else "disabled"
-                Toast.makeText(this, "Settings saved. Job start commands $status.", Toast.LENGTH_SHORT).show()
+                val engineStatus = if (useOnDeviceProcessing) "Whisper" else "Android STT"
+                Toast.makeText(this, "Settings saved. Using $engineStatus.", Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("Cancel", null)
             .show()

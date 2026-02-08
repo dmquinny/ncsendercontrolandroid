@@ -141,6 +141,9 @@ class MainActivity : AppCompatActivity() {
     // Unlock sequence state
     private var awaitingUnlockMessage = false
     
+    // Flag to prevent saving settings during spinner initialization/updates
+    private var spinnerInitializing = true  // Start true, set false after setup
+    
     // Units preference from ncSender (metric or imperial)
     private var unitsPreference = "metric"
     private val httpClient = OkHttpClient.Builder()
@@ -192,13 +195,13 @@ class MainActivity : AppCompatActivity() {
             android.util.Log.e("MainActivity", "Failed to init SoundPool", e)
         }
 
-        setupUI()
         setupTabs()
         setupConnectionDot()
         setupProbeButton()
         updateConnectionUI(false)
         loadSavedUrls()
         loadUserSettings()
+        setupUI()
         
         // Initialize USB encoder manager
         setupUsbEncoder()
@@ -252,6 +255,9 @@ class MainActivity : AppCompatActivity() {
     
     override fun onStop() {
         super.onStop()
+        
+        // Save user settings before app goes to background or is killed
+        saveUserSettings()
         
         // Schedule disconnect after 30 minutes in background
         // This keeps the connection alive for quick app switches but saves resources for long backgrounds
@@ -711,30 +717,37 @@ class MainActivity : AppCompatActivity() {
         // Step size spinner - values in mm (metric) or converted from inches (imperial)
         // Metric: 0.05, 0.1, 1, 10, 100 mm
         // Imperial: 0.001, 0.005, 0.01, 0.1, 1 in (converted to mm: 0.0254, 0.127, 0.254, 2.54, 25.4)
+        // Restore saved step size selection BEFORE setting listener to avoid auto-trigger overwriting saved value
+        val stepIndex = getStepValues().indexOfFirst { it == currentStep }
+        if (stepIndex >= 0) binding.stepSpinner.setSelection(stepIndex)
         binding.stepSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 currentStep = getStepValue(position)
-                saveUserSettings()
+                if (!spinnerInitializing) {
+                    saveUserSettings()
+                }
             }
             override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
-        // Restore saved step size selection
-        val stepIndex = getStepValues().indexOfFirst { it == currentStep }
-        if (stepIndex >= 0) binding.stepSpinner.setSelection(stepIndex)
 
         // Feed rate spinner - values in mm/min (metric) or converted from in/min (imperial)
         // Metric: 100, 500, 1000, 3000, 6000, 8000 mm/min
         // Imperial: 4, 20, 40, 120, 240, 315 in/min (converted to mm/min: ~100, ~500, ~1000, ~3000, ~6000, ~8000)
+        // Restore saved feed rate selection BEFORE setting listener
+        val feedRateIndex = getFeedRateValues().indexOfFirst { it == currentFeedRate }
+        binding.feedRateSpinner.setSelection(if (feedRateIndex >= 0) feedRateIndex else 1)
         binding.feedRateSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 currentFeedRate = getFeedRateValue(position)
-                saveUserSettings()
+                if (!spinnerInitializing) {
+                    saveUserSettings()
+                }
             }
             override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
-        // Restore saved feed rate selection
-        val feedRateIndex = getFeedRateValues().indexOfFirst { it == currentFeedRate }
-        binding.feedRateSpinner.setSelection(if (feedRateIndex >= 0) feedRateIndex else 1)
+        
+        // Allow saving now that spinners are set up with correct initial values
+        spinnerInitializing = false
 
         // Mode toggle button - shows the OTHER mode name
         binding.modeToggleBtn.setOnClickListener {
@@ -1207,7 +1220,7 @@ class MainActivity : AppCompatActivity() {
                     holdHandler = null
                     if (!didZero) {
                         clipDrawable.level = 0
-                        if (event.action == MotionEvent.ACTION_UP) {
+                        if (event.action == MotionEvent.ACTION_UP && !axisControlsDisabled()) {
                             toggleAxis(axis)
                         }
                     }
@@ -1640,6 +1653,9 @@ class MainActivity : AppCompatActivity() {
     private fun updateUnitsDisplay() {
         val isMetric = unitsPreference == "metric"
         
+        // Prevent saving during adapter updates
+        spinnerInitializing = true
+        
         // Update step size spinner
         val stepLabels = if (isMetric) {
             resources.getStringArray(R.array.step_sizes)
@@ -1667,6 +1683,9 @@ class MainActivity : AppCompatActivity() {
         if (savedFeedPosition >= 0 && savedFeedPosition < feedLabels.size) {
             binding.feedRateSpinner.setSelection(savedFeedPosition)
         }
+        
+        // Re-enable saving
+        spinnerInitializing = false
         
         // Update position display
         updatePositionDisplay()

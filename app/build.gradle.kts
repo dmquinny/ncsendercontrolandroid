@@ -11,8 +11,8 @@ android {
         applicationId = "com.cncpendant.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 7
-        versionName = "1.2.3"
+        versionCode = 8
+        versionName = "1.2.4"
     }
 
     buildTypes {
@@ -73,4 +73,7 @@ dependencies {
     
     // USB Mass Storage for direct firmware flashing
     implementation("me.jahnen.libaums:core:0.10.0")
+    
+    // ONNX Runtime for on-device ML (Whisper + DeepFilterNet)
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.16.3")
 }
