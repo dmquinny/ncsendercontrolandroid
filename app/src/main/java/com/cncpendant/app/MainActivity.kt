@@ -68,6 +68,15 @@ class MainActivity : AppCompatActivity() {
     private var lastEncoderJogSentAt = 0L
     private val ENCODER_MIN_SEND_INTERVAL_MS = 100L
     
+    // Encoder continuous jog support
+    private var encoderContinuousJogging = false
+    private var encoderContinuousDirection = 0
+    private var encoderTickCount = 0
+    private var encoderLastTickTime = 0L
+    private val ENCODER_CONTINUOUS_THRESHOLD = 6  // ticks in same direction to trigger continuous
+    private val ENCODER_TICK_TIMEOUT_MS = 500L    // max gap between ticks before stopping continuous jog
+    private var encoderIdleRunnable: Runnable? = null
+    
     // FN modifier button state
     private var isFnHeld = false
     
@@ -98,7 +107,7 @@ class MainActivity : AppCompatActivity() {
     private var isLongPress = false
     private val LONG_PRESS_DELAY_MS = 300L
     private val HEARTBEAT_INTERVAL_MS = 250L
-    private val CONTINUOUS_TRAVEL_DISTANCE = 400f
+    private val CONTINUOUS_TRAVEL_DISTANCE = 10000f  // 10 meters - jog cancel stops immediately anyway
     private val JOG_COOLDOWN_MS = 200L
     private var jogCooldownUntil = 0L
 
@@ -2000,6 +2009,50 @@ class MainActivity : AppCompatActivity() {
         }
         
         val now = System.currentTimeMillis()
+        val direction = if (delta > 0) 1 else -1
+        val absClicks = kotlin.math.abs(delta)
+        
+        // Cancel any pending idle timeout
+        encoderIdleRunnable?.let { jogHandler.removeCallbacks(it) }
+        
+        // Check if we should reset tick count (timeout or direction change)
+        if (now - encoderLastTickTime > ENCODER_TICK_TIMEOUT_MS || 
+            (encoderTickCount > 0 && direction != encoderContinuousDirection)) {
+            // Direction changed or too long since last tick - reset
+            if (encoderContinuousJogging) {
+                stopEncoderContinuousJog()
+            }
+            encoderTickCount = 0
+        }
+        
+        encoderLastTickTime = now
+        encoderContinuousDirection = direction
+        encoderTickCount += absClicks
+        
+        // Schedule idle timeout to stop continuous jog if encoder stops
+        encoderIdleRunnable = Runnable {
+            if (encoderContinuousJogging) {
+                stopEncoderContinuousJog()
+            }
+            encoderTickCount = 0
+        }
+        jogHandler.postDelayed(encoderIdleRunnable!!, ENCODER_TICK_TIMEOUT_MS)
+        
+        if (encoderContinuousJogging) {
+            // Already in continuous mode - just let it run
+            // Direction changes are handled above
+            return
+        }
+        
+        // Check if we should start continuous jog
+        if (encoderTickCount >= ENCODER_CONTINUOUS_THRESHOLD) {
+            // Start continuous jog
+            encoderContinuousJogging = true
+            startContinuousJog(selectedAxis, direction)
+            return
+        }
+        
+        // Normal step jog mode - rate limited
         if (now - lastEncoderJogSentAt < ENCODER_MIN_SEND_INTERVAL_MS || isJogCoolingDown()) {
             return
         }
@@ -2007,12 +2060,48 @@ class MainActivity : AppCompatActivity() {
         lastEncoderJogSentAt = now
         
         // Convert encoder clicks to jog distance (use reported delta for smooth movement)
-        val direction = if (delta > 0) 1 else -1
-        val absClicks = kotlin.math.abs(delta)
         val distance = currentStep * absClicks * direction
         
         playClick()
         webSocketManager.sendJogCommand(selectedAxis, distance, currentFeedRate)
+    }
+    
+    private fun stopEncoderContinuousJog() {
+        if (!encoderContinuousJogging) return
+        val axis = selectedAxis  // Capture axis before clearing state
+        val stepSize = currentStep  // Capture step size
+        encoderContinuousJogging = false
+        stopContinuousJog()
+        
+        // After machine stops, send a small jog to round to whole number (only for step sizes > 1mm)
+        if (axis.isNotEmpty() && stepSize > 1f) {
+            // Wait for machine to fully stop and position to update (600ms)
+            jogHandler.postDelayed({
+                roundPositionToWholeNumber(axis)
+            }, 600)
+        }
+    }
+    
+    private fun roundPositionToWholeNumber(axis: String) {
+        if (!isConnected || jogDisabled()) return
+        
+        // Get current machine position for the axis
+        val currentPos = when (axis) {
+            "X" -> machinePosition.x
+            "Y" -> machinePosition.y
+            "Z" -> machinePosition.z
+            else -> return
+        }.toDouble()
+        
+        // Calculate target whole number position
+        val targetPos = kotlin.math.round(currentPos).toInt()
+        
+        // Only move if we're not already at a whole number (tolerance > 0.01mm)
+        if (kotlin.math.abs(currentPos - targetPos) > 0.01) {
+            // Use absolute jog command - smoother than G0 for small corrections
+            val command = "\$J=G53 G90 $axis$targetPos F$currentFeedRate"
+            webSocketManager.sendCommand(command)
+        }
     }
 
     override fun onDestroy() {
@@ -2021,6 +2110,9 @@ class MainActivity : AppCompatActivity() {
         // Cancel any pending background disconnect
         backgroundDisconnectRunnable?.let { jogHandler.removeCallbacks(it) }
         backgroundDisconnectRunnable = null
+        // Cancel any pending encoder idle timeout
+        encoderIdleRunnable?.let { jogHandler.removeCallbacks(it) }
+        encoderIdleRunnable = null
         webSocketManager.disconnect()
         usbEncoderManager?.release()
         usbEncoderManager = null

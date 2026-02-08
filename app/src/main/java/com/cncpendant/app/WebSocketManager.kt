@@ -118,6 +118,25 @@ class WebSocketManager(private val context: Context) {
         }
         send(message.toString())
     }
+    
+    fun sendAbsoluteJogCommand(axis: String, position: Double, feedRate: Int) {
+        // Use G53 (machine coordinates) with G90 (absolute) for precise positioning
+        val command = "\$J=G53 G90 $axis${String.format("%.0f", position)} F$feedRate"
+        
+        val message = JsonObject().apply {
+            addProperty("type", "jog:step")
+            add("data", JsonObject().apply {
+                addProperty("command", command)
+                addProperty("displayCommand", "Jog to $axis${String.format("%.0f", position)}")
+                addProperty("axis", axis)
+                addProperty("direction", "")
+                addProperty("feedRate", feedRate)
+                addProperty("distance", 0)
+                addProperty("commandId", "pendant-${System.currentTimeMillis()}-${(Math.random() * 65536).toInt().toString(16)}")
+            })
+        }
+        send(message.toString())
+    }
 
     fun sendJogCancel() {
         // Send the jog cancel realtime command (0x85) - cleanly stops only the active jog
