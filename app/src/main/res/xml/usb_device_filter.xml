@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- USB device filter for RP2040 encoder -->
+<!-- VID 0x2E8A = 11914 decimal (Raspberry Pi Foundation) -->
+<resources>
+    <!-- RP2040 Pico default -->
+    <usb-device vendor-id="11914" product-id="3" />
+    
+    <!-- RP2040 Pico SDK -->
+    <usb-device vendor-id="11914" product-id="5" />
+    
+    <!-- RP2040 Arduino/earlephilhower CDC -->
+    <usb-device vendor-id="11914" product-id="10" />
+    <usb-device vendor-id="11914" product-id="11" />
+    
+    <!-- RP2040 Waveshare variant -->
+    <usb-device vendor-id="11914" product-id="12" />
+    
+    <!-- RP2040 Arduino board CDC (0x00C0 = 192) -->
+    <usb-device vendor-id="11914" product-id="192" />
+    
+    <!-- Catch-all for any Raspberry Pi Foundation device -->
+    <!-- Note: This may match other RP2040 boards too -->
+    <usb-device vendor-id="11914" />
+</resources>

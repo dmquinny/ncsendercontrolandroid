@@ -52,6 +52,12 @@ class MainActivity : AppCompatActivity() {
     private var vibrator: Vibrator? = null
     private var soundPool: SoundPool? = null
     private var clickSoundId: Int = 0
+    
+    // USB Encoder support
+    private var usbEncoderManager: UsbEncoderManager? = null
+    private var encoderConnected = false
+    private var lastEncoderJogSentAt = 0L
+    private val ENCODER_MIN_SEND_INTERVAL_MS = 100L
 
     private var selectedAxis: String = ""
     private var currentStep: Float = 0.05f
@@ -157,6 +163,9 @@ class MainActivity : AppCompatActivity() {
         updateConnectionUI(false)
         loadSavedUrls()
         loadUserSettings()
+        
+        // Initialize USB encoder manager
+        setupUsbEncoder()
     }
     
     private fun checkForUpdates() {
@@ -1648,11 +1657,70 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
+    
+    // --- USB Encoder Support ---
+    
+    private fun setupUsbEncoder() {
+        usbEncoderManager = UsbEncoderManager(this).apply {
+            setEncoderListener(object : UsbEncoderManager.EncoderListener {
+                override fun onEncoderConnected() {
+                    encoderConnected = true
+                    Log.d(TAG, "USB Encoder connected")
+                    Toast.makeText(this@MainActivity, "USB Encoder connected", Toast.LENGTH_SHORT).show()
+                }
+                
+                override fun onEncoderDisconnected() {
+                    encoderConnected = false
+                    Log.d(TAG, "USB Encoder disconnected")
+                    Toast.makeText(this@MainActivity, "USB Encoder disconnected", Toast.LENGTH_SHORT).show()
+                }
+                
+                override fun onEncoderRotation(delta: Int, position: Long) {
+                    handleEncoderRotation(delta)
+                }
+                
+                override fun onEncoderError(error: String) {
+                    Log.e(TAG, "USB Encoder error: $error")
+                }
+            })
+            initialize()
+        }
+    }
+    
+    private fun handleEncoderRotation(delta: Int) {
+        // Firmware now reports actual clicks (not raw pulses), use directly
+        if (delta == 0) return
+        
+        // Rotate the on-screen dial to match the encoder
+        binding.jogDial.rotateByTicks(delta)
+        
+        // Only send jog commands if connected and axis selected
+        if (!isConnected || jogDisabled() || selectedAxis.isEmpty()) {
+            return
+        }
+        
+        val now = System.currentTimeMillis()
+        if (now - lastEncoderJogSentAt < ENCODER_MIN_SEND_INTERVAL_MS || isJogCoolingDown()) {
+            return
+        }
+        
+        lastEncoderJogSentAt = now
+        
+        // Convert encoder clicks to jog distance
+        val direction = if (delta > 0) 1 else -1
+        val absClicks = kotlin.math.abs(delta)
+        val distance = currentStep * absClicks * direction
+        
+        playClick()
+        webSocketManager.sendJogCommand(selectedAxis, distance, currentFeedRate)
+    }
 
     override fun onDestroy() {
         super.onDestroy()
         scanJob?.cancel()
         webSocketManager.disconnect()
+        usbEncoderManager?.release()
+        usbEncoderManager = null
         soundPool?.release()
         soundPool = null
     }

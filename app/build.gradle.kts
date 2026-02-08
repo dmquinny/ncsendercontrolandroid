@@ -61,4 +61,7 @@ dependencies {
     
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    
+    // USB Serial for RP2040 encoder
+    implementation("com.github.mik3y:usb-serial-for-android:3.7.0")
 }

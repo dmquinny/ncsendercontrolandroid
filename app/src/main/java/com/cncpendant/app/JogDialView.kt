@@ -145,6 +145,18 @@ class JogDialView @JvmOverloads constructor(
         invalidate()
     }
 
+    /**
+     * Programmatically rotate the dial by a number of ticks.
+     * Positive = clockwise, negative = counter-clockwise.
+     * Used to sync the visual dial with an external encoder.
+     */
+    fun rotateByTicks(ticks: Int) {
+        dialRotation += ticks * degreesPerTick
+        // Keep rotation within 0-360 range
+        dialRotation = ((dialRotation % 360f) + 360f) % 360f
+        invalidate()
+    }
+
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
         centerX = w / 2f
